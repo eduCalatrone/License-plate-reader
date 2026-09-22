@@ -248,6 +248,10 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
       <label for="f-plate">Placa</label>
       <input id="f-plate" class="plate-input" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <p id="badge" class="badge"></p>
+      <div id="alts-wrap" hidden>
+        <p class="sub">Outras leituras possíveis</p>
+        <div id="alts" class="chips-row"></div>
+      </div>
     </div>
 
     <div class="field">
@@ -396,7 +400,7 @@ function grayToRGBA(g, d) {
 }
 /* PURE:end */
 
-/* ---------- Leitura: única parte que conhece o OCR. Para trocar por uma API de placas, troque só readPlate(). ---------- */
+/* ---------- Leitura local (reserva): Tesseract no navegador. Menos precisa que o serviço de placas. ---------- */
 let workerP = null;
 function getWorker() {
   if (!workerP) {
@@ -427,7 +431,7 @@ function prep(src, kind, targetW, topCut = 0) {
 }
 
 // mode 'crop': recorte da moldura da câmera. mode 'full': foto inteira do aparelho.
-async function readPlate(canvas, mode) {
+async function readLocal(canvas, mode) {
   const w = await getWorker();
   // No recorte: recorte inteiro e "sem a tarja de cima", cada um em preto e branco e em tons de cinza.
   const variants = mode === 'crop'
@@ -452,6 +456,64 @@ async function readPlate(canvas, mode) {
   if (!best) return { plate: null };
   const confidence = best.m >= 2 || (best.conf > 0 && best.conf < 50) ? 'baixa' : (best.n >= 2 && best.m === 0 ? 'alta' : 'media');
   return { plate: best.p, confidence };
+}
+
+/* ---------- Leitura principal: serviço de placas, chamado pelo servidor (api/read-plate.js) ---------- */
+const API_URL = 'api/read-plate';
+const CODE_KEY = 'placas:codigo';
+const apiError = (code, extra) => Object.assign(new Error(code), { code }, extra);
+const API_NOTES = {
+  no_backend: 'Sem servidor de leitura (abra pelo site publicado).',
+  not_configured: 'O servidor ainda não tem a chave do serviço de leitura.',
+  network: 'Sem conexão com o servidor de leitura.',
+  rate_limited: 'Limite do serviço de leitura atingido.',
+  too_large: 'A imagem ficou grande demais para o serviço.',
+  upstream: 'O serviço de leitura falhou.',
+};
+
+async function callApi(canvas, retried = false) {
+  const image = canvas.toDataURL('image/jpeg', 0.85);
+  const headers = { 'Content-Type': 'application/json' };
+  let code = ''; try { code = localStorage.getItem(CODE_KEY) || ''; } catch {}
+  if (code) headers['x-access-code'] = code;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+  let res;
+  try { res = await fetch(API_URL, { method: 'POST', headers, body: JSON.stringify({ image }), signal: ctl.signal }); }
+  catch { throw apiError('network'); }
+  finally { clearTimeout(timer); }
+  let data = null; try { data = await res.json(); } catch {}
+  if (res.status === 401) {
+    try { localStorage.removeItem(CODE_KEY); } catch {}
+    if (!retried) {
+      const typed = window.prompt('Código de acesso do leitor:');
+      if (typed && typed.trim()) { try { localStorage.setItem(CODE_KEY, typed.trim()); } catch {} return callApi(canvas, true); }
+    }
+    throw apiError('unauthorized');
+  }
+  if (res.status === 501) throw apiError('not_configured');
+  if (res.status === 429) throw apiError('rate_limited');
+  if (res.status === 413) throw apiError('too_large');
+  if (!data || res.status === 404 || res.status === 405) throw apiError('no_backend');
+  if (!res.ok) throw apiError('upstream', { detail: data.error });
+  return data; // { plate, score, alternatives }
+}
+
+// Tenta o serviço de placas; se o servidor não estiver disponível, cai para a leitura local.
+async function readPlate(frame, crop, mode) {
+  let note = '';
+  try {
+    const d = await callApi(frame);
+    const p = fixByPosition(norm(d.plate));
+    const alts = (d.alternatives || []).map(norm).filter(a => isValid(a) && a !== p).slice(0, 3);
+    if (!isValid(p)) return { plate: null, alts, engine: 'api' };
+    const s = Number(d.score) || 0;
+    return { plate: p, alts, engine: 'api', confidence: s >= 0.85 ? 'alta' : s >= 0.6 ? 'media' : 'baixa' };
+  } catch (e) {
+    if (e.code === 'unauthorized') throw e;
+    note = API_NOTES[e.code] || API_NOTES.upstream;
+  }
+  const out = await readLocal(crop, mode);
+  return { ...out, alts: [], engine: 'local', note };
 }
 
 /* ---------- Estado ---------- */
@@ -548,6 +610,10 @@ function renderPanel() {
     b.textContent = `Já cadastrada. Lida ${n} ${n === 1 ? 'vez' : 'vezes'}` + (c.prevSeen ? `, última leitura ${ago(c.prevSeen)}.` : '.');
   } else b.textContent = 'Placa nova. Ainda não está salva.';
 
+  const alts = (c.alts || []).filter(a => a !== c.plate);
+  $('alts-wrap').hidden = !alts.length;
+  $('alts').replaceChildren(...alts.map(a => el('button', { class: 'chip chip--add', type: 'button', onclick: () => setPlate(a) }, a)));
+
   $('btn-save').textContent = rec ? 'Salvar alterações' : 'Salvar placa';
   $('btn-save').disabled = !valid || c.reading;
   $('btn-del').hidden = !rec;
@@ -621,7 +687,7 @@ function startCur() {
   if (S.cur && S.cur.photoUrl) URL.revokeObjectURL(S.cur.photoUrl);
   S.cur = {
     plate: '', tags: [], photoUrl: null, reading: false, status: '',
-    prevSeen: null, loadedFor: null, dirty: false, confirmDel: false, bumpedPlate: null,
+    prevSeen: null, loadedFor: null, dirty: false, confirmDel: false, bumpedPlate: null, alts: [],
   };
   $('f-plate').value = ''; clearForm(); $('panel-msg').textContent = '';
   renderPanel();
@@ -721,34 +787,48 @@ function captureCrop() {
   return cv;
 }
 
+// Quadro inteiro da câmera (até 1280 px): o serviço de placas acha a placa sozinho.
+function captureFrame() {
+  const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw || !vh) return null;
+  const sc = Math.min(1, 1280 / Math.max(vw, vh));
+  const cv = document.createElement('canvas'); cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
+  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
 function readError(e) {
+  if (e && e.code === 'unauthorized') return 'Código de acesso inválido. Toque em ler de novo e informe o código certo.';
   if (e && e.code === 'lib') return 'Não consegui carregar o leitor. Ele precisa de internet na primeira vez. Digite a placa abaixo.';
   return 'Não deu para ler agora. Tente de novo ou digite a placa.';
 }
 
-async function runOcr(canvas, mode) {
+async function runRead(frame, crop, mode) {
   const c = startCur();
   c.reading = true; c.status = 'Lendo a placa…'; renderPanel(); showEl('panel');
-  canvas.toBlob(b => {
+  frame.toBlob(b => {
     if (!b || S.cur !== c) return;
     c.photoUrl = URL.createObjectURL(b); renderPanel();
   }, 'image/jpeg', 0.85);
   S.onOcr = m => {
     if (S.cur === c && c.reading && m && /loading/i.test(m.status || '')) {
-      $('status').textContent = 'Baixando o leitor, só na primeira vez…';
+      $('status').textContent = 'Baixando o leitor local, só na primeira vez…';
     }
   };
   try {
-    const out = await readPlate(canvas, mode);
+    const out = await readPlate(frame, crop, mode);
     if (S.cur !== c) return;
     c.reading = false;
+    const local = out.engine === 'local' ? ` ${out.note} Usei a leitura do aparelho, que é menos precisa.` : '';
     if (out.plate) {
-      c.status = out.confidence === 'baixa'
+      c.alts = [out.plate, ...(out.alts || [])];
+      c.status = (out.confidence === 'baixa'
         ? 'Leitura incerta. Confira cada caractere antes de salvar.'
-        : 'Placa lida. Confira os caracteres antes de salvar.';
+        : 'Placa lida. Confira os caracteres antes de salvar.') + local;
       setPlate(out.plate, { bump: true });
     } else {
-      c.status = 'Não consegui ler com certeza. Tente de novo, mais perto e sem reflexo, ou digite a placa.';
+      c.alts = out.alts || [];
+      c.status = 'Não encontrei uma placa legível. Aproxime, evite reflexo e tente de novo, ou digite a placa.' + local;
       renderPanel();
     }
   } catch (e) {
@@ -758,10 +838,10 @@ async function runOcr(canvas, mode) {
 }
 
 function onShot() {
-  const cv = captureCrop();
-  if (!cv) return;
+  const frame = captureFrame(), crop = captureCrop();
+  if (!frame || !crop) return;
   stopCamera();
-  runOcr(cv, 'crop');
+  runRead(frame, crop, 'crop');
 }
 
 async function onFile(file) {
@@ -773,7 +853,7 @@ async function onFile(file) {
     const cv = document.createElement('canvas');
     cv.width = Math.max(1, Math.round(img.naturalWidth * sc)); cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    runOcr(cv, 'full');
+    runRead(cv, cv, 'full');
   } catch {
     flash('scan-msg', 'Não consegui abrir essa foto. Tente outra.', true);
   } finally { URL.revokeObjectURL(url); }
