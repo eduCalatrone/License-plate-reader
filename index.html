@@ -591,41 +591,184 @@ async function readPlate(frame, crop, mode) {
 }
 
 /* =====================================================================
-   Dados (neste aparelho). Fotos ficam no IndexedDB; o resto no localStorage.
+   Dados: banco online (Supabase), pelas funções em api/.
+   O DB em memória tem o mesmo formato de antes. Cada mudança (commit) vira
+   operações que vão para api/dados. Nada é apagado no banco: excluir só marca.
    ===================================================================== */
-const DKEY = 'sd:dados:v1';
-const blank = () => ({ versao: 1, funcionarios: [], tipos: [], veiculos: {}, atendimentos: [], estoque: { itens: [], movimentos: [] } });
-function loadDB() {
+let DB = null;
+let FOTO_BASE = '';
+let carregadoEm = 0;
+let mudancas = 0;          // conta os commits, para não sobrescrever com dados velhos
+let pendentes = 0;         // envios ainda sem resposta
+let geracao = 0;           // muda quando um envio falha: descarta o que estava na fila
+let fila = Promise.resolve();
+const VERS = new Map();    // versão de cada atendimento no banco (evita sobrescrever outro aparelho)
+
+async function apiJson(path, { method = 'GET', body, raw, retried = false } = {}) {
+  const headers = {};
+  let code = ''; try { code = localStorage.getItem(CODE_KEY) || ''; } catch {}
+  if (code) headers['x-access-code'] = code;
+  let payload;
+  if (raw) { headers['Content-Type'] = 'application/octet-stream'; payload = raw; }
+  else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), raw ? 90000 : 30000);
+  let res;
+  try { res = await fetch(path, { method, headers, body: payload, cache: 'no-store', signal: ctl.signal }); }
+  catch { throw apiError('network'); }
+  finally { clearTimeout(timer); }
+  let data = null; try { data = await res.json(); } catch {}
+  if (res.status === 401) {
+    try { localStorage.removeItem(CODE_KEY); } catch {}
+    if (!retried) {
+      const typed = window.prompt('Código de acesso da equipe:');
+      if (typed && typed.trim()) { try { localStorage.setItem(CODE_KEY, typed.trim()); } catch {} return apiJson(path, { method, body, raw, retried: true }); }
+    }
+    throw apiError('unauthorized');
+  }
+  if (!res.ok || !data) throw apiError((data && data.error) || (res.status === 404 ? 'no_backend' : 'server'), { status: res.status });
+  return data;
+}
+
+async function buscarDados({ forcar = false } = {}) {
+  const antes = mudancas;
+  const d = await apiJson('api/dados');
+  // Mudou algo enquanto buscava, ou a tela não pode ser redesenhada agora: fica com o que está na tela.
+  if (!forcar && (antes !== mudancas || pendentes || !podeRedesenhar())) return false;
+  FOTO_BASE = d.fotoBase || '';
+  const vers = new Map();
+  const atendimentos = d.atendimentos.map(({ versao, ...a }) => { vers.set(a.id, versao); return a; });
+  const novo = { funcionarios: d.funcionarios, tipos: d.tipos, veiculos: d.veiculos, atendimentos, estoque: d.estoque };
+  carregadoEm = Date.now();
+  VERS.clear(); for (const [k, v] of vers) VERS.set(k, v);
+  if (DB && JSON.stringify(novo) === JSON.stringify(DB)) return false; // nada mudou: mantém os mesmos objetos da tela
+  DB = novo;
+  return true;
+}
+
+// Compara o antes e o depois de um commit e monta as operações para o banco.
+function diffOps(a, b) {
+  const ops = [];
+  const lista = (col, xa, xb, key = 'id', podeRemover = () => true) => {
+    const ma = new Map(xa.map(x => [x[key], x]));
+    const mb = new Map(xb.map(x => [x[key], x]));
+    for (const [k, x] of mb) { const old = ma.get(k); if (!old || JSON.stringify(old) !== JSON.stringify(x)) ops.push({ col, acao: 'salvar', item: x }); }
+    for (const [k, x] of ma) if (!mb.has(k) && podeRemover(x)) ops.push({ col, acao: 'remover', id: k });
+  };
+  const semFotos = xs => xs.map(({ fotos, ...r }) => r);
+  const fotos = xs => xs.flatMap(at => at.fotos.map(f => ({ ...f, atendimentoId: at.id })));
+  const atsDepois = new Set(b.atendimentos.map(x => x.id));
+  lista('funcionarios', a.funcionarios, b.funcionarios);
+  lista('tipos', a.tipos, b.tipos);
+  lista('veiculos', Object.values(a.veiculos), Object.values(b.veiculos), 'placa', () => false);
+  lista('itens', a.estoque.itens, b.estoque.itens);
+  lista('movimentos', a.estoque.movimentos, b.estoque.movimentos, 'id', () => false);
+  lista('atendimentos', semFotos(a.atendimentos), semFotos(b.atendimentos));
+  // Foto de atendimento excluído continua marcada como ativa (o atendimento inteiro fica guardado).
+  lista('fotos', fotos(a.atendimentos), fotos(b.atendimentos), 'id', f => atsDepois.has(f.atendimentoId));
+  return ops;
+}
+
+const ERROS_SALVAR = {
+  conflito: 'Este veículo foi alterado em outro aparelho. Os dados foram atualizados: confira e faça de novo.',
+  placa_em_andamento: 'Esta placa já tem um serviço em andamento.',
+  network: 'Sem internet. A última alteração não foi salva.',
+  unauthorized: 'Código de acesso inválido. A alteração não foi salva.',
+};
+// Envia as operações na ordem. Se falhar: avisa, descarta a fila e recarrega do banco.
+function enviar(ops, { redesenhar: redraw = true } = {}) {
+  const gen = geracao;
+  pendentes++;
+  const p = fila.then(async () => {
+    if (gen !== geracao) return false;
+    for (const op of ops) if (op.col === 'atendimentos' && op.acao === 'salvar') op.versao = VERS.has(op.item.id) ? VERS.get(op.item.id) : null;
+    const u = me();
+    const r = await apiJson('api/dados', { method: 'POST', body: { ops, por: u ? { id: u.id, nome: u.nome } : null } });
+    for (const [id, v] of Object.entries(r.versoes || {})) VERS.set(id, v);
+    return true;
+  }).catch(async e => {
+    if (e && e.versoes) for (const [id, v] of Object.entries(e.versoes)) VERS.set(id, v);
+    geracao++;
+    toast(ERROS_SALVAR[e && e.code] || 'Não foi possível salvar. Os dados foram recarregados.', true);
+    try { await buscarDados({ forcar: true }); } catch {}
+    if (redraw) redesenhar();
+    return false;
+  }).finally(() => { pendentes--; });
+  fila = p;
+  return p;
+}
+// Aplica uma mudança na tela na hora e envia para o banco em seguida.
+function commit(fn) {
+  const antes = JSON.parse(JSON.stringify(DB));
+  fn();
+  mudancas++;
+  const ops = diffOps(antes, DB);
+  if (ops.length) enviar(ops);
+  return true;
+}
+// Igual ao commit, mas espera o banco confirmar (usado ao iniciar um serviço).
+async function commitAgora(fn) {
+  const antes = JSON.parse(JSON.stringify(DB));
+  fn();
+  mudancas++;
+  const ops = diffOps(antes, DB);
+  return ops.length ? enviar(ops, { redesenhar: false }) : true;
+}
+
+// Só troca os dados em segundo plano quando dá para redesenhar a tela sem atrapalhar quem está usando.
+function podeRedesenhar() {
+  const [r] = parts();
+  if (['placa', 'novo', 'ajustes', 'entrar'].includes(r)) return false;
+  if (r === 'estoque' && S.stockOpen) return false;
+  if (S.ocupado) return false;
+  const a = document.activeElement;
+  if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) && a.type !== 'search') return false;
+  return !$('viewer').open;
+}
+function redesenhar() {
+  const y = window.scrollY;
+  route({ manterScroll: true });
+  window.scrollTo(0, y);
+}
+// Busca de novo no banco se os dados tiverem mais de 20 segundos (outros aparelhos podem ter mudado algo).
+async function atualizarSeVelho(maxIdade = 20000) {
+  if (!DB || pendentes || document.hidden || Date.now() - carregadoEm < maxIdade) return;
+  const s = getSession(); if (!s || s.tipo === 'cliente') return;
+  try { if (await buscarDados()) redesenhar(); } catch {}
+}
+setInterval(() => atualizarSeVelho(), 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSeVelho(5000); });
+
+/* ---------- Fotos (Storage do Supabase) ---------- */
+const fotoId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join('');
+const fotoSrc = (f, mini = false) => f && f.caminho && FOTO_BASE ? FOTO_BASE + (mini && f.miniatura ? f.miniatura : f.caminho) : '';
+function photoImg(f, alt, mini = true) {
+  const src = fotoSrc(f, mini);
+  return el('img', { alt: alt || '', decoding: 'async', loading: 'lazy', src: src || null });
+}
+// Envia a foto (e uma miniatura para as listas). Devolve { id, caminho, miniatura }.
+async function enviarFoto(blob) {
+  const id = fotoId();
+  const { caminho } = await apiJson(`api/foto?id=${id}&tipo=foto`, { method: 'POST', raw: blob });
+  let miniatura = null;
   try {
-    const d = JSON.parse(localStorage.getItem(DKEY) || 'null');
-    if (d && d.versao === 1) { const b = blank(); return { ...b, ...d, estoque: { ...b.estoque, ...(d.estoque || {}) } }; }
+    const mini = await compress(blob, 480, 0.72);
+    miniatura = (await apiJson(`api/foto?id=${id}&tipo=mini`, { method: 'POST', raw: mini })).caminho;
+  } catch {} // sem miniatura, as listas usam a foto normal
+  return { id, caminho, miniatura };
+}
+
+/* ---------- Dados antigos deste aparelho (antes do banco) ----------
+   Ficam guardados no navegador; nada é apagado. Em Ajustes o Controle pode enviá-los ao banco. */
+const DKEY_ANTIGO = 'sd:dados:v1';
+const IMPORTADO_KEY = 'sd:dados:v1:enviado';
+function dadosAntigos() {
+  if (lsGet(IMPORTADO_KEY)) return null;
+  try {
+    const d = JSON.parse(localStorage.getItem(DKEY_ANTIGO) || 'null');
+    if (d && d.versao === 1 && ((d.atendimentos || []).length || ((d.estoque || {}).movimentos || []).length)) return d;
   } catch {}
   return null;
 }
-function persist() {
-  try { localStorage.setItem(DKEY, JSON.stringify(DB)); return true; } catch { return false; }
-}
-// Aplica uma mudança; se o aparelho não conseguir salvar, desfaz e avisa.
-function commit(fn) {
-  const before = JSON.stringify(DB);
-  fn();
-  if (!persist()) { DB = JSON.parse(before); toast('Não foi possível salvar neste aparelho. Libere espaço ou saia da aba anônima.', true); return false; }
-  return true;
-}
-function seed() {
-  DB.funcionarios.push(
-    { id: uid(), nome: 'Eduardo', nivel: 'controle' },
-    { id: uid(), nome: 'Petherson', nivel: 'controle' },
-    { id: uid(), nome: 'Funcionário teste', nivel: 'funcionario' });
-  DB.tipos.push({ id: uid(), nome: 'Cabine Blindada', etapas: ['Inspeção', 'Desmontagem', 'Limpeza externa', 'Limpeza interna', 'Limpeza de peças desmontadas', 'Montagem'] });
-  DB.estoque.itens.push(
-    { id: uid(), nome: 'Espuma expansiva', unidade: 'lata', minimo: 0 },
-    { id: uid(), nome: 'Manta asfáltica', unidade: 'rolo', minimo: 0 });
-}
-let DB = loadDB();
-if (!DB) { DB = blank(); seed(); persist(); }
-
-/* ---------- Fotos (IndexedDB) ---------- */
 let idbP = null;
 function idb() {
   if (!idbP) idbP = new Promise((res, rej) => {
@@ -636,31 +779,9 @@ function idb() {
   });
   return idbP;
 }
-async function fotoPut(id, blob) {
-  const db = await idb();
-  await new Promise((res, rej) => {
-    const tx = db.transaction('fotos', 'readwrite'); tx.objectStore('fotos').put(blob, id);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
-  });
-}
-async function fotoGet(id) {
+async function fotoAntiga(id) {
   const db = await idb();
   return new Promise((res, rej) => { const r = db.transaction('fotos').objectStore('fotos').get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
-}
-async function fotoDel(id) {
-  try { const db = await idb(); db.transaction('fotos', 'readwrite').objectStore('fotos').delete(id); } catch {}
-  const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u); urlCache.delete(id); }
-}
-const urlCache = new Map();
-async function fotoUrl(id) {
-  if (urlCache.has(id)) return urlCache.get(id);
-  const b = await fotoGet(id); if (!b) return null;
-  const u = URL.createObjectURL(b); urlCache.set(id, u); return u;
-}
-function photoImg(id, alt) {
-  const img = el('img', { alt: alt || '', decoding: 'async' });
-  fotoUrl(id).then(u => { if (u) img.src = u; }).catch(() => {});
-  return img;
 }
 async function compress(fileOrBlob, max = 1600, q = 0.82) {
   const url = URL.createObjectURL(fileOrBlob);
@@ -698,8 +819,7 @@ const atendimentosDaPlaca = p => DB.atendimentos.filter(a => a.placa === p).sort
 const etapaAtual = at => at.concluido ? 'Concluído' : at.etapas[at.etapaIndex];
 const progresso = at => at.concluido ? 1 : at.etapaIndex / at.etapas.length;
 function capaDe(at) {
-  const f = at.fotos.find(x => x.rotulo === 'Frente') || at.fotos.find(x => x.rotulo !== 'Placa') || at.fotos[0];
-  return f ? f.id : null;
+  return at.fotos.find(x => x.rotulo === 'Frente') || at.fotos.find(x => x.rotulo !== 'Placa') || at.fotos[0] || null;
 }
 function registrar(at, texto) {
   const u = me();
@@ -753,7 +873,7 @@ function setSession(s) { try { if (s) localStorage.setItem(SKEY, JSON.stringify(
 function me() {
   const s = getSession(); if (!s) return null;
   if (s.tipo === 'cliente') return { tipo: 'cliente' };
-  const f = funcById(s.id); if (!f) return null;
+  const f = DB && funcById(s.id); if (!f) return null;
   return { tipo: f.nivel, id: f.id, nome: f.nome };
 }
 const isCtrl = () => { const u = me(); return !!u && u.tipo === 'controle'; };
@@ -762,16 +882,20 @@ function sair() { setSession(null); S.pending = null; $('toast').hidden = true; 
 /* =====================================================================
    Estado de tela e navegação
    ===================================================================== */
-const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null };
+const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null, ocupado: false };
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent); }
 window.addEventListener('hashchange', route);
 
-function route() {
+function route(opts) {
   stopCamera();
-  const u = me();
   const [r, a] = parts();
-  window.scrollTo(0, 0);
+  // A equipe precisa dos dados do banco; o cliente não (usa api/cliente).
+  const s = getSession();
+  if (!DB && (s ? s.tipo !== 'cliente' : r === 'entrar' && a !== 'cliente')) return abrirComDados();
+  const u = me();
+  if (u && u.tipo !== 'cliente') atualizarSeVelho();
+  if (!(opts && opts.manterScroll)) window.scrollTo(0, 0);
   if (!u) {
     if (r === 'entrar') return renderLoginPick(a);
     return renderLogin();
@@ -786,6 +910,36 @@ function route() {
     case 'ajustes': return isCtrl() ? renderSettings() : go('#/inicio');
     default: return renderHome();
   }
+}
+
+// Primeira abertura: busca os dados no banco antes de mostrar a tela.
+let abrindo = null;
+function abrirComDados() {
+  if (abrindo) return abrindo;
+  document.body.classList.add('no-nav');
+  $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
+    el('span', { class: 'wordmark', text: 'Strike Details' }),
+    el('p', { class: 'hint', text: 'Carregando os dados…' }))));
+  abrindo = buscarDados({ forcar: true })
+    .then(() => { abrindo = null; route(); })
+    .catch(e => { abrindo = null; renderFalha(e); });
+  return abrindo;
+}
+function renderFalha(e) {
+  document.body.classList.add('no-nav');
+  const msg = {
+    network: 'Sem conexão com a internet.',
+    unauthorized: 'Código de acesso inválido.',
+    not_configured: 'O servidor ainda não tem as chaves do banco.',
+    no_backend: 'Sem servidor (abra pelo site publicado ou pelo servidor local).',
+  }[e && e.code] || 'O banco não respondeu.';
+  $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
+    el('span', { class: 'wordmark', text: 'Strike Details' }),
+    el('h1', { text: 'Não deu para abrir' }),
+    el('p', { class: 'hint', text: `${msg} Os dados ficam no banco online, então é preciso internet para usar o sistema.` }),
+    el('div', { class: 'actions' },
+      el('button', { class: 'btn btn--primary grow', type: 'button', onclick: () => abrirComDados() }, 'Tentar de novo'),
+      el('button', { class: 'btn', type: 'button', onclick: sair }, 'Sair')))));
 }
 
 // Monta a tela: barra do topo, conteúdo e (para a equipe) navegação inferior.
@@ -837,7 +991,7 @@ function renderLogin() {
       choice('#/entrar/funcionario', 'user', 'Funcionário', 'Ler placas, registrar etapas e retiradas'),
       choice('#/entrar/controle', 'shield', 'Controle', 'Acesso completo ao sistema'),
       choice('#/entrar/cliente', 'key', 'Cliente', 'Acompanhar o serviço do seu veículo', true)),
-    el('p', { class: 'login-note', text: 'Os dados ficam salvos neste aparelho.' }))));
+    el('p', { class: 'login-note', text: 'Os dados ficam salvos online e aparecem em todos os aparelhos.' }))));
 }
 function renderLoginPick(tipo) {
   if (tipo === 'cliente') { setSession({ tipo: 'cliente' }); return go('#/cliente'); }
@@ -1112,7 +1266,7 @@ function photoGrid({ items, slots = [], onAdd, onRemove, extraLabel = 'Adicionar
   const ul = el('ul', { class: 'photos' });
   const tiles = [];
   for (const f of items) {
-    const img = f.url ? el('img', { src: f.url, alt: f.rotulo }) : photoImg(f.id, f.rotulo);
+    const img = f.url ? el('img', { src: f.mini || f.url, alt: f.rotulo, loading: 'lazy' }) : photoImg(f, f.rotulo);
     tiles.push(el('li', { class: 'photo' }, img,
       el('button', { class: 'open', type: 'button', 'aria-label': `Ver foto: ${f.rotulo}`, onclick: () => openViewer(f) }),
       el('span', { class: 'cap', text: f.rotulo }),
@@ -1146,7 +1300,7 @@ function photoGrid({ items, slots = [], onAdd, onRemove, extraLabel = 'Adicionar
   return wrap;
 }
 async function openViewer(f) {
-  const url = f.url || await fotoUrl(f.id);
+  const url = f.url || fotoSrc(f);
   if (!url) return;
   $('viewer-img').src = url; $('viewer-img').alt = f.rotulo; $('viewer-cap').textContent = f.rotulo;
   const d = $('viewer'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
@@ -1200,14 +1354,18 @@ function renderNew(placaRaw) {
     let valor = null;
     if (isCtrl() && fValor.value.trim()) { valor = parseNum(fValor.value); if (isNaN(valor)) { toast('Valor inválido.', true); return; } }
     salvar.disabled = true; salvar.textContent = 'Salvando…';
+    const voltar = () => { salvar.disabled = false; salvar.textContent = 'Iniciar serviço'; };
     const fotosMeta = [];
     try {
-      for (const f of fotos) { const id = uid(); await fotoPut(id, f.blob); fotosMeta.push({ id, rotulo: f.rotulo, em: Date.now() }); }
-    } catch {
-      for (const f of fotosMeta) fotoDel(f.id);
-      salvar.disabled = false; salvar.textContent = 'Iniciar serviço';
-      toast('Não foi possível salvar as fotos neste aparelho.', true); return;
+      for (const [i, f] of fotos.entries()) {
+        salvar.textContent = `Enviando fotos ${i + 1} de ${fotos.length}…`;
+        fotosMeta.push({ ...(await enviarFoto(f.blob)), rotulo: f.rotulo, em: Date.now() });
+      }
+    } catch (e) {
+      voltar();
+      toast(e && e.code === 'network' ? 'Sem internet. As fotos não foram enviadas, tente de novo.' : 'Não foi possível enviar as fotos. Tente de novo.', true); return;
     }
+    salvar.textContent = 'Salvando…';
     const u = me();
     const at = {
       id: uid(), placa, tipoId: tipo.id, tipoNome: tipo.nome, etapas: [...tipo.etapas], etapaIndex: 0, feitas: {},
@@ -1215,12 +1373,17 @@ function renderNew(placaRaw) {
       danos: fDanos.value.trim(), objetos: fObj.value.trim(), valor, fotos: fotosMeta, historico: [],
     };
     registrar(at, 'Entrada do veículo');
-    const ok = commit(() => {
+    const ok = await commitAgora(() => {
       DB.veiculos[placa] = { ...(DB.veiculos[placa] || { criadoEm: Date.now() }), placa, descricao: fDesc.value.trim() };
       DB.atendimentos.push(at);
     });
+    if (!ok) {
+      voltar();
+      const outro = ativoDaPlaca(placa); // outro aparelho abriu esta placa antes
+      if (outro) go(`#/veiculo/${esc(outro.id)}`);
+      return;
+    }
     for (const f of fotos) URL.revokeObjectURL(f.url);
-    if (!ok) { for (const f of fotosMeta) fotoDel(f.id); salvar.disabled = false; salvar.textContent = 'Iniciar serviço'; return; }
     toast('Serviço iniciado.');
     go(`#/veiculo/${esc(at.id)}`);
   });
@@ -1276,15 +1439,21 @@ function renderVehicle(id) {
     onAdd: at.concluido && !ctrl ? null : async rotulo => {
       const file = await pickPhoto(); if (!file) return;
       try {
-        const blob = await compress(file); const fid = uid();
-        await fotoPut(fid, blob);
-        if (!commit(() => { at.fotos.push({ id: fid, rotulo, em: Date.now() }); registrar(at, `Foto adicionada: ${rotulo}`); })) { fotoDel(fid); return; }
-        redraw();
-      } catch { toast('Não foi possível salvar a foto.', true); }
+        const blob = await compress(file);
+        toast('Enviando foto…');
+        S.ocupado = true;
+        let m;
+        try { m = await enviarFoto(blob); } finally { S.ocupado = false; }
+        const atual = DB.atendimentos.find(a => a.id === at.id);
+        if (!atual) { toast('Este atendimento não está mais na lista.', true); return; }
+        commit(() => { atual.fotos.push({ ...m, rotulo, em: Date.now() }); registrar(atual, `Foto adicionada: ${rotulo}`); });
+        toast('Foto salva.');
+        if (parts()[1] === id) redraw();
+      } catch (e) { toast(e && e.code === 'network' ? 'Sem internet. A foto não foi enviada.' : 'Não foi possível enviar a foto.', true); }
     },
     onRemove: ctrl ? f => {
       if (!window.confirm(`Remover a foto "${f.rotulo}"?`)) return;
-      if (commit(() => { at.fotos = at.fotos.filter(x => x.id !== f.id); registrar(at, `Foto removida: ${f.rotulo}`); })) { fotoDel(f.id); redraw(); }
+      if (commit(() => { at.fotos = at.fotos.filter(x => x.id !== f.id); registrar(at, `Foto removida: ${f.rotulo}`); })) redraw();
     } : null,
   }));
 
@@ -1305,8 +1474,8 @@ function renderVehicle(id) {
       if (commit(() => { at.valor = n; registrar(at, n == null ? 'Valor removido' : `Valor definido: ${fmtBRL(n)}`); })) toast('Valor salvo.');
     } }, 'Salvar');
     const excluir = el('button', { class: 'btn btn--danger', type: 'button', onclick: () => {
-      if (!window.confirm(`Excluir o atendimento da placa ${fmtPlaca(at.placa)}? As fotos também serão apagadas.`)) return;
-      if (commit(() => { DB.atendimentos = DB.atendimentos.filter(a => a.id !== at.id); })) { at.fotos.forEach(f => fotoDel(f.id)); toast('Atendimento excluído.'); go('#/inicio'); }
+      if (!window.confirm(`Excluir o atendimento da placa ${fmtPlaca(at.placa)}? Ele sai das listas, mas continua guardado no banco com as fotos.`)) return;
+      if (commit(() => { DB.atendimentos = DB.atendimentos.filter(a => a.id !== at.id); })) { toast('Atendimento excluído.'); go('#/inicio'); }
     } }, 'Excluir atendimento');
     ctrlCard = el('div', { class: 'card' },
       el('h2', { text: 'Controle' }),
@@ -1523,14 +1692,107 @@ function renderSettings() {
         } }, 'Adicionar')))),
     el('section', { class: 'stack' },
       el('h2', { text: 'Dados' }),
+      cartaoDadosAntigos(redraw),
       el('div', { class: 'card' },
-        el('p', { class: 'hint', text: 'Tudo fica salvo neste navegador. Faça um backup de vez em quando (as fotos não entram no arquivo).' }),
+        el('p', { class: 'hint', text: 'Os dados ficam salvos online, no banco da Strike Details, e aparecem em todos os aparelhos. Nada é apagado: o que for excluído só sai das listas. O backup baixa uma cópia em JSON (sem as fotos).' }),
         el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => {
           const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
           const a = el('a', { href: URL.createObjectURL(blob), download: `strike-details-backup-${new Date().toISOString().slice(0, 10)}.json` });
           document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
         } }, 'Baixar backup (JSON)')))));
   shell(body, { current: 'ajustes' });
+}
+
+/* ---------- Envio dos dados antigos (de antes do banco) ----------
+   Funcionários, tipos e materiais são ligados pelo nome aos que já existem no banco.
+   Atendimentos e movimentos que já foram enviados são pulados. Os dados do aparelho não são apagados. */
+function cartaoDadosAntigos(redraw) {
+  const d = dadosAntigos(); if (!d) return null;
+  const nAt = (d.atendimentos || []).length, nMov = ((d.estoque || {}).movimentos || []).length;
+  const btn = el('button', { class: 'btn btn--primary', type: 'button' }, 'Enviar para o banco');
+  const status = el('p', { class: 'hint', hidden: true });
+  btn.addEventListener('click', async () => {
+    if (!window.confirm('Enviar os dados antigos deste aparelho para o banco?')) return;
+    btn.disabled = true; status.hidden = false; S.ocupado = true;
+    try {
+      const r = await importarAntigos(d, t => { status.textContent = t; });
+      lsSet(IMPORTADO_KEY, String(Date.now()));
+      toast(`Enviado: ${r.atendimentos} ${r.atendimentos === 1 ? 'atendimento' : 'atendimentos'}, ${r.fotos} ${r.fotos === 1 ? 'foto' : 'fotos'} e ${r.movimentos} ${r.movimentos === 1 ? 'movimento' : 'movimentos'} de estoque.${r.pulados ? ` ${r.pulados} já tinham serviço em andamento e ficaram de fora.` : ''}`);
+      redraw();
+    } catch (e) {
+      btn.disabled = false;
+      status.textContent = 'Não terminou. Nada se perde: toque de novo para continuar de onde parou.';
+    } finally { S.ocupado = false; }
+  });
+  return el('div', { class: 'card' },
+    el('h3', { text: 'Dados antigos neste aparelho' }),
+    el('p', { class: 'hint', text: `Antes do banco, este aparelho guardou ${nAt} ${nAt === 1 ? 'atendimento' : 'atendimentos'} e ${nMov} ${nMov === 1 ? 'movimento' : 'movimentos'} de estoque. Envie para eles aparecerem em todos os aparelhos.` }),
+    status, el('div', {}, btn));
+}
+async function importarAntigos(d, progresso) {
+  const porNome = (lista, nome) => lista.find(x => x.nome.trim().toLowerCase() === String(nome || '').trim().toLowerCase());
+  const mapFunc = new Map(), mapTipo = new Map(), mapItem = new Map();
+  const novosFunc = [], novosTipos = [], novosItens = [];
+  for (const f of d.funcionarios || []) {
+    const x = porNome(DB.funcionarios, f.nome) || porNome(novosFunc, f.nome);
+    if (x) mapFunc.set(f.id, x.id); else { const n = { id: uid(), nome: f.nome, nivel: f.nivel === 'controle' ? 'controle' : 'funcionario' }; novosFunc.push(n); mapFunc.set(f.id, n.id); }
+  }
+  for (const t of d.tipos || []) {
+    const x = porNome(DB.tipos, t.nome) || porNome(novosTipos, t.nome);
+    if (x) mapTipo.set(t.id, x.id); else { const n = { id: uid(), nome: t.nome, etapas: [...(t.etapas || [])] }; novosTipos.push(n); mapTipo.set(t.id, n.id); }
+  }
+  for (const it of (d.estoque || {}).itens || []) {
+    const x = porNome(DB.estoque.itens, it.nome) || porNome(novosItens, it.nome);
+    if (x) mapItem.set(it.id, x.id); else { const n = { id: uid(), nome: it.nome, unidade: it.unidade || 'un', minimo: Number(it.minimo) || 0 }; novosItens.push(n); mapItem.set(it.id, n.id); }
+  }
+  const pessoa = id => (id && mapFunc.get(id)) || id || null;
+
+  // Atendimentos: pula os já enviados e os de placa que já tem serviço em andamento no banco.
+  const jaTem = new Set(DB.atendimentos.map(a => a.id));
+  const emAndamento = new Set(DB.atendimentos.filter(a => !a.concluido).map(a => a.placa));
+  const ats = [];
+  let pulados = 0, nFotos = 0;
+  const lista = (d.atendimentos || []).filter(a => !jaTem.has(a.id) && isValid(a.placa) && (a.etapas || []).length);
+  for (const [i, a] of lista.entries()) {
+    if (!a.concluido && emAndamento.has(a.placa)) { pulados++; continue; }
+    if (!a.concluido) emAndamento.add(a.placa);
+    progresso(`Enviando atendimento ${i + 1} de ${lista.length} (${fmtPlaca(a.placa)})…`);
+    const fotos = [];
+    for (const f of a.fotos || []) {
+      let blob = null; try { blob = await fotoAntiga(f.id); } catch {}
+      if (!blob) continue;
+      fotos.push({ ...(await enviarFoto(blob)), rotulo: f.rotulo, em: f.em || a.criadoEm });
+      nFotos++;
+    }
+    ats.push({
+      id: a.id, placa: a.placa, tipoId: mapTipo.get(a.tipoId) || null, tipoNome: a.tipoNome || '', etapas: [...a.etapas],
+      etapaIndex: Math.min(Math.max(0, a.etapaIndex | 0), a.etapas.length - 1), feitas: a.feitas || {}, concluido: !!a.concluido,
+      concluidoEm: a.concluidoEm || null, criadoEm: a.criadoEm || Date.now(), criadoPorNome: a.criadoPorNome || '',
+      danos: a.danos || '', objetos: a.objetos || '', valor: a.valor == null ? null : Number(a.valor), fotos,
+      historico: (a.historico || []).map(h => ({ ...h, porId: pessoa(h.porId) })),
+    });
+  }
+  const jaMov = new Set(DB.estoque.movimentos.map(m => m.id));
+  const movs = ((d.estoque || {}).movimentos || []).filter(m => !jaMov.has(m.id) && mapItem.has(m.itemId))
+    .map(m => ({ ...m, itemId: mapItem.get(m.itemId), porId: pessoa(m.porId) }));
+
+  progresso('Salvando no banco…');
+  const ok = await commitAgora(() => {
+    DB.funcionarios.push(...novosFunc);
+    DB.tipos.push(...novosTipos);
+    DB.estoque.itens.push(...novosItens);
+    for (const [placa, v] of Object.entries(d.veiculos || {})) {
+      if (!isValid(placa)) continue;
+      const atual = DB.veiculos[placa];
+      if (!atual) DB.veiculos[placa] = { placa, descricao: v.descricao || '', criadoEm: v.criadoEm || Date.now() };
+      else if (!atual.descricao && v.descricao) atual.descricao = v.descricao;
+    }
+    for (const a of ats) if (!DB.veiculos[a.placa]) DB.veiculos[a.placa] = { placa: a.placa, descricao: '', criadoEm: a.criadoEm };
+    DB.atendimentos.push(...ats);
+    DB.estoque.movimentos.push(...movs);
+  });
+  if (!ok) throw new Error('importar');
+  return { atendimentos: ats.length, fotos: nFotos, movimentos: movs.length, pulados };
 }
 
 /* =====================================================================
@@ -1546,38 +1808,46 @@ function renderClient(placaRaw) {
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); buscar(); } });
 
-  let result = null;
-  if (placa) {
-    const at = ativoDaPlaca(placa) || atendimentosDaPlaca(placa)[0];
-    if (!at) {
-      result = el('p', { class: 'empty', text: `Não encontramos serviço para a placa ${fmtPlaca(placa)}. Confira a placa ou fale com a Strike Details.` });
-    } else {
-      const v = DB.veiculos[at.placa] || {};
-      const pct = Math.round(progresso(at) * 100);
-      result = el('div', { class: 'stack' },
-        el('div', { class: 'veh-head' },
-          el('span', { class: 'veh-plate', text: fmtPlaca(at.placa) }),
-          el('span', { class: 'veh-sub', text: [v.descricao, at.tipoNome].filter(Boolean).join(' · ') })),
-        el('div', { class: 'status-big' },
-          el('span', { class: 'k', text: at.concluido ? 'SERVIÇO CONCLUÍDO' : 'ETAPA ATUAL' }),
-          el('span', { class: 'v', text: at.concluido ? 'Pronto' : at.etapas[at.etapaIndex] }),
-          el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` }))),
-        el('div', { class: 'card' }, el('h2', { text: 'Andamento' }),
-          el('ol', { class: 'steps' }, at.etapas.map((nome, i) => {
-            const done = at.concluido || i < at.etapaIndex, cur = !at.concluido && i === at.etapaIndex;
-            return el('li', { class: 'step ' + (done ? 'is-done' : cur ? 'is-current' : 'is-todo') },
-              el('span', { class: 'step-dot' }, done ? icon('check') : null),
-              el('span', { class: 'step-name', text: nome }),
-              el('span', { class: 'step-when', text: at.feitas[i] ? fmtData(at.feitas[i]) : cur ? 'Em andamento' : '' }));
-          }))),
-        at.fotos.length ? el('div', { class: 'card' }, el('h2', { text: 'Fotos' }), photoGrid({ items: at.fotos })) : null);
-    }
-  }
+  const result = el('div', { class: 'stack' });
   const body = el('div', { class: 'client stack-lg' },
     el('div', { class: 'client-hero' }, el('h1', { text: 'Acompanhe seu veículo' }), el('p', { text: 'Digite a placa para ver o andamento do serviço e as fotos.' })),
     el('div', { class: 'row' }, input, el('button', { class: 'btn btn--primary', type: 'button', style: 'flex:none', onclick: buscar }, 'Ver andamento')),
     result);
   shell(body, { nav: false });
+  if (placa) carregarCliente(placa, result);
+}
+async function carregarCliente(placa, box) {
+  box.replaceChildren(el('p', { class: 'hint', text: 'Buscando…' }));
+  let at;
+  try { at = (await apiJson(`api/cliente?placa=${esc(placa)}`)).atendimento; }
+  catch (e) {
+    if (norm(parts()[1] || '') !== placa) return;
+    box.replaceChildren(el('p', { class: 'empty', text: e && e.code === 'network' ? 'Sem internet. Confira a conexão e tente de novo.' : 'Não deu para buscar agora. Tente de novo em instantes.' }));
+    return;
+  }
+  if (norm(parts()[1] || '') !== placa) return; // já saiu desta tela
+  if (!at) {
+    box.replaceChildren(el('p', { class: 'empty', text: `Não encontramos serviço para a placa ${fmtPlaca(placa)}. Confira a placa ou fale com a Strike Details.` }));
+    return;
+  }
+  const pct = Math.round(progresso(at) * 100);
+  box.replaceChildren(
+    el('div', { class: 'veh-head' },
+      el('span', { class: 'veh-plate', text: fmtPlaca(at.placa) }),
+      el('span', { class: 'veh-sub', text: [at.descricao, at.tipoNome].filter(Boolean).join(' · ') })),
+    el('div', { class: 'status-big' },
+      el('span', { class: 'k', text: at.concluido ? 'SERVIÇO CONCLUÍDO' : 'ETAPA ATUAL' }),
+      el('span', { class: 'v', text: at.concluido ? 'Pronto' : at.etapas[at.etapaIndex] }),
+      el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` }))),
+    el('div', { class: 'card' }, el('h2', { text: 'Andamento' }),
+      el('ol', { class: 'steps' }, at.etapas.map((nome, i) => {
+        const done = at.concluido || i < at.etapaIndex, cur = !at.concluido && i === at.etapaIndex;
+        return el('li', { class: 'step ' + (done ? 'is-done' : cur ? 'is-current' : 'is-todo') },
+          el('span', { class: 'step-dot' }, done ? icon('check') : null),
+          el('span', { class: 'step-name', text: nome }),
+          el('span', { class: 'step-when', text: at.feitas[i] ? fmtData(at.feitas[i]) : cur ? 'Em andamento' : '' }));
+      }))),
+    at.fotos.length ? el('div', { class: 'card' }, el('h2', { text: 'Fotos' }), photoGrid({ items: at.fotos })) : null);
 }
 
 /* ---------- Início ---------- */
