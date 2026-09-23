@@ -199,7 +199,7 @@ textarea { resize: vertical; min-height: 76px; }
 .plate-center { display: grid; place-items: center; }
 
 /* ---------- Leitor ---------- */
-.frame { position: relative; overflow: hidden; border-radius: 14px; background: #000; width: 100%; aspect-ratio: 3 / 4; }
+.frame { position: relative; overflow: hidden; border-radius: 14px; background: #000; width: min(100%, calc(46dvh * 3 / 4)); justify-self: center; aspect-ratio: 3 / 4; }
 .frame video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .guide { position: absolute; left: 8%; width: 84%; aspect-ratio: 3.2 / 1; top: 50%; transform: translateY(-50%); border: 3px solid #fff; border-radius: 10px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); pointer-events: none; }
 .status { margin: 0; font-size: 14px; }
@@ -921,11 +921,11 @@ function renderReader() {
       el('div', { class: 'frame', id: 'frame' },
         el('video', { id: 'video', playsinline: true, muted: true, autoplay: true }),
         el('div', { class: 'guide', 'aria-hidden': 'true' })),
-      el('p', { class: 'hint', text: 'Encaixe a placa dentro da moldura, de frente e o mais perto que der.' }),
-      el('div', { id: 'cam-tools', class: 'stack', style: 'gap:12px' }),
       el('div', { class: 'actions' },
         el('button', { class: 'btn btn--primary grow', type: 'button', onclick: onShot }, 'Capturar placa'),
-        el('button', { class: 'btn', type: 'button', onclick: () => { stopCamera(); $('scan').hidden = false; } }, 'Cancelar'))),
+        el('button', { class: 'btn', type: 'button', onclick: () => { stopCamera(); $('scan').hidden = false; } }, 'Cancelar')),
+      el('div', { id: 'cam-tools', class: 'stack', style: 'gap:12px' }),
+      el('p', { class: 'hint', text: 'Encaixe a placa dentro da moldura, de frente. Use o zoom para ler de mais longe.' })),
     el('section', { id: 'result', class: 'card', hidden: true }));
   shell(body, { current: 'placa' });
 }
@@ -945,49 +945,14 @@ function stopCamera() {
   const v = $('video'); if (v) v.srcObject = null;
   const live = $('viewer-live'); if (live) live.hidden = true;
 }
-function syncFrameRatio() {
-  const v = $('video');
-  if (v && v.videoWidth && v.videoHeight) $('frame').style.aspectRatio = `${v.videoWidth} / ${v.videoHeight}`;
-}
-/* ---------- Escolha de câmera e zoom ----------
-   Em vários Android (ex.: Galaxy A54) o navegador abre a grande angular por padrão, o que obriga
-   a chegar muito perto da placa. Por isso: na primeira vez tentamos a câmera principal, depois
-   o funcionário pode trocar e o aparelho lembra a escolha (e o zoom) para as próximas leituras. */
-const CAM_KEY = 'sd:camera', ZOOM_KEY = 'sd:zoom:';
+/* ---------- Câmera ao vivo: uma câmera só (a que o navegador escolhe) + zoom ----------
+   O quadro na tela é fixo em 3:4 e corta o excesso do vídeo (object-fit: cover).
+   O recorte enviado para a leitura segue exatamente o que aparece no quadro. */
+const ZOOM_KEY = 'sd:zoom';
 const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch {} };
+lsSet('sd:camera', null); // limpa a escolha de câmera da versão anterior
 const camTrack = () => S.stream && S.stream.getVideoTracks()[0];
-const camDeviceId = () => { const t = camTrack(); try { return t ? t.getSettings().deviceId || '' : ''; } catch { return ''; } };
-function startStream(deviceId) {
-  const video = deviceId
-    ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-    : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
-  return navigator.mediaDevices.getUserMedia({ video, audio: false });
-}
-// Câmeras traseiras (os nomes só aparecem depois que o navegador libera a câmera).
-async function backCams() {
-  const vids = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && d.deviceId);
-  const back = vids.filter(d => /back|rear|traseira|environment/i.test(d.label));
-  return back.length ? back : vids.filter(d => !/front|frontal|user/i.test(d.label));
-}
-// No Android os nomes vêm como "camera2 0, facing back"; o menor número costuma ser a câmera principal.
-function mainCam(cams) {
-  const num = d => { const m = /camera2?\s*(\d+)/i.exec(d.label); return m ? Number(m[1]) : Infinity; };
-  const sorted = cams.slice().sort((a, b) => num(a) - num(b));
-  return sorted.length && num(sorted[0]) !== Infinity ? sorted[0] : null;
-}
-async function attachStream(stream) {
-  if (S.stream && S.stream !== stream) S.stream.getTracks().forEach(t => t.stop());
-  S.stream = stream;
-  const v = $('video'); if (!v) { stopCamera(); return false; }
-  v.onloadedmetadata = syncFrameRatio; v.onresize = syncFrameRatio;
-  v.srcObject = stream;
-  try { await v.play(); } catch {}
-  syncFrameRatio();
-  const saved = parseFloat(lsGet(ZOOM_KEY + camDeviceId()));
-  if (saved > 0) applyZoom(saved);
-  return true;
-}
 function applyZoom(z) {
   const t = camTrack(); if (!t || !t.applyConstraints) return;
   t.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => {});
@@ -998,78 +963,61 @@ function camFail(e) {
 async function openCamera() {
   if (!canLive()) return;
   stopCamera();
-  const saved = lsGet(CAM_KEY);
   let stream;
-  try { stream = await startStream(saved); }
-  catch (e) {
-    if (!saved) return camFail(e);
-    lsSet(CAM_KEY, null); // câmera salva não existe mais neste aparelho
-    try { stream = await startStream(null); } catch (e2) { return camFail(e2); }
-  }
-  if (!$('video')) { stream.getTracks().forEach(t => t.stop()); return; } // saiu da tela enquanto abria
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) { return camFail(e); }
+  const v = $('video');
+  if (!v) { stream.getTracks().forEach(t => t.stop()); return; } // saiu da tela enquanto abria
   S.stream = stream;
-  let cams = [];
-  try { cams = await backCams(); } catch {}
-  if (!saved && cams.length > 1) {
-    const main = mainCam(cams);
-    if (main && main.deviceId !== camDeviceId()) {
-      try { const s = await startStream(main.deviceId); stream.getTracks().forEach(t => t.stop()); S.stream = s; } catch {}
-    }
-  }
-  if (!(await attachStream(S.stream))) return;
+  v.srcObject = stream;
+  try { await v.play(); } catch {}
+  const saved = parseFloat(lsGet(ZOOM_KEY));
+  if (saved > 0) applyZoom(saved);
   $('scan').hidden = true; $('result').hidden = true; $('viewer-live').hidden = false;
-  renderCamTools(cams);
+  renderZoom();
   getWorker().catch(() => {});
 }
-async function switchCam(deviceId, cams) {
-  if (deviceId === camDeviceId()) return;
-  try {
-    const s = await startStream(deviceId);
-    if (!$('video')) { s.getTracks().forEach(t => t.stop()); return; }
-    await attachStream(s);
-    lsSet(CAM_KEY, deviceId);
-    renderCamTools(cams);
-  } catch (e) { camFail(e); }
-}
-function renderCamTools(cams) {
+function renderZoom() {
   const box = $('cam-tools'); if (!box) return;
-  const kids = [];
-  const cur = camDeviceId();
-  if (cams.length > 1) {
-    kids.push(el('div', { class: 'field' },
-      el('span', { class: 'label', text: 'Câmera' }),
-      el('div', { class: 'seg', role: 'group', 'aria-label': 'Escolher câmera' },
-        cams.map((d, i) => el('button', { type: 'button', 'aria-pressed': String(d.deviceId === cur), title: d.label || '', onclick: () => switchCam(d.deviceId, cams) }, `Câmera ${i + 1}`))),
-      el('p', { class: 'hint', text: 'Se a imagem estiver muito aberta, troque de câmera. O aparelho lembra a escolha.' })));
-  }
   const t = camTrack();
   let caps = {}; try { caps = (t && t.getCapabilities && t.getCapabilities()) || {}; } catch {}
-  if (caps.zoom && caps.zoom.max > caps.zoom.min) {
-    let z = caps.zoom.min; try { z = t.getSettings().zoom || z; } catch {}
-    const out = el('span', { class: 'count', text: `${fmtQ(z)}x` });
-    const range = el('input', { type: 'range', min: caps.zoom.min, max: Math.min(caps.zoom.max, 10), step: caps.zoom.step || 0.1, value: z, 'aria-label': 'Zoom', style: 'width:100%;accent-color:#121212' });
-    range.addEventListener('input', () => { const v = Number(range.value); out.textContent = `${fmtQ(v)}x`; applyZoom(v); lsSet(ZOOM_KEY + camDeviceId(), String(v)); });
-    kids.push(el('div', { class: 'field' }, el('div', { class: 'card-head' }, el('span', { class: 'label', text: 'Zoom' }), out), range));
-  }
-  box.replaceChildren(...kids);
-  box.hidden = !kids.length;
+  if (!(caps.zoom && caps.zoom.max > caps.zoom.min)) { box.replaceChildren(); box.hidden = true; return; }
+  let z = caps.zoom.min;
+  const saved = parseFloat(lsGet(ZOOM_KEY));
+  if (saved > 0) z = saved; else { try { z = t.getSettings().zoom || z; } catch {} }
+  const out = el('span', { class: 'count', text: `${fmtQ(z)}x` });
+  const range = el('input', { type: 'range', min: caps.zoom.min, max: Math.min(caps.zoom.max, 10), step: caps.zoom.step || 0.1, value: z, 'aria-label': 'Zoom', style: 'width:100%;accent-color:#121212' });
+  range.addEventListener('input', () => { const n = Number(range.value); out.textContent = `${fmtQ(n)}x`; applyZoom(n); lsSet(ZOOM_KEY, String(n)); });
+  box.replaceChildren(el('div', { class: 'field' }, el('div', { class: 'card-head' }, el('span', { class: 'label', text: 'Zoom' }), out), range));
+  box.hidden = false;
 }
-function captureCrop() {
+// Parte do vídeo que aparece no quadro 3:4 (em pixels do vídeo).
+function visibleRect() {
   const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
   if (!vw || !vh) return null;
-  const gw = vw * 0.84, gh = gw / 3.2, m = gw * 0.06;
-  const sx = Math.max(0, vw * 0.08 - m), sy = Math.max(0, (vh - gh) / 2 - m);
-  const sw = Math.min(vw - sx, gw + 2 * m), sh = Math.min(vh - sy, gh + 2 * m);
+  const box = $('frame').getBoundingClientRect();
+  const W = box.width || 3, H = box.height || 4;
+  const sc = Math.max(W / vw, H / vh);
+  const w = Math.min(vw, W / sc), h = Math.min(vh, H / sc);
+  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
+}
+// Recorte da moldura da placa (com 6% de folga), para a leitura do aparelho.
+function captureCrop() {
+  const v = $('video'), r = visibleRect(); if (!r) return null;
+  const gw = r.w * 0.84, gh = gw / 3.2, m = gw * 0.06;
+  const sx = Math.max(r.x, r.x + r.w * 0.08 - m), sy = Math.max(r.y, r.y + (r.h - gh) / 2 - m);
+  const sw = Math.min(r.x + r.w - sx, gw + 2 * m), sh = Math.min(r.y + r.h - sy, gh + 2 * m);
   const cv = document.createElement('canvas'); cv.width = Math.round(sw); cv.height = Math.round(sh);
   cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
   return cv;
 }
+// O que aparece no quadro (até 1280 px), para o serviço de placas.
 function captureFrame() {
-  const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
-  if (!vw || !vh) return null;
-  const sc = Math.min(1, 1280 / Math.max(vw, vh));
-  const cv = document.createElement('canvas'); cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
-  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  const v = $('video'), r = visibleRect(); if (!r) return null;
+  const sc = Math.min(1, 1280 / Math.max(r.w, r.h));
+  const cv = document.createElement('canvas'); cv.width = Math.round(r.w * sc); cv.height = Math.round(r.h * sc);
+  cv.getContext('2d').drawImage(v, r.x, r.y, r.w, r.h, 0, 0, cv.width, cv.height);
   return cv;
 }
 function onShot() {
