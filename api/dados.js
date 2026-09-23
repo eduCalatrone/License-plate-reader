@@ -4,37 +4,46 @@
 //
 // Cada op: { col, acao: 'salvar' | 'remover', item?, id?, versao? }
 //   col: funcionarios | tipos | veiculos | itens | movimentos | atendimentos | fotos
+//   Só do Controle: ajustes, senha
 // Nada é apagado: 'remover' só marca o registro (ativo = false, excluido_em, removida_em).
 // Atendimentos têm versão: se outro aparelho mudou antes, responde 409 'conflito' e o site recarrega.
+// Precisa de login (token). O que é só do Controle é conferido aqui também, não só na tela.
+// O Funcionário não recebe valores dos serviços.
 
-const { config, send, erro, acessoOk, readJsonBody, rest, restAll, fotoBase, ms, iso } = require('./_supabase.js');
+const { config, send, erro, readJsonBody, rest, restAll, fotoBase, ms, iso, hashSenha, usuarioDaSessao } = require('./_supabase.js');
 
 /* ---------- Leitura ---------- */
-async function carregar(c) {
-  const [funcionarios, tipos, veiculos, atendimentos, fotos, itens, movimentos] = await Promise.all([
-    restAll(c, 'sd_funcionarios?select=id,nome,nivel&ativo=eq.true&order=nome,id'),
+async function carregar(c, eu) {
+  const ctrl = eu.nivel === 'controle';
+  const [funcionarios, tipos, veiculos, atendimentos, fotos, itens, movimentos, ajustes] = await Promise.all([
+    restAll(c, 'sd_funcionarios?select=id,nome,nivel,usuario,senha_hash&ativo=eq.true&order=nome,id'),
     restAll(c, 'sd_tipos_servico?select=id,nome,etapas&ativo=eq.true&order=criado_em,id'),
     restAll(c, 'sd_veiculos?select=placa,descricao,criado_em&order=placa'),
     restAll(c, 'sd_atendimentos?select=*&excluido_em=is.null&order=criado_em,id'),
-    restAll(c, 'sd_fotos?select=id,atendimento_id,rotulo,caminho,miniatura,criado_em&removida_em=is.null&order=criado_em,id'),
+    restAll(c, 'sd_fotos?select=id,atendimento_id,rotulo,caminho,miniatura,criado_em,apagada_em&removida_em=is.null&order=criado_em,id'),
     restAll(c, 'sd_estoque_itens?select=id,nome,unidade,minimo&ativo=eq.true&order=criado_em,id'),
     restAll(c, 'sd_estoque_movimentos?select=*&order=em,id'),
+    restAll(c, 'sd_ajustes?select=chave,valor'),
   ]);
-  const fotosPorAt = new Map();
+  const fotosPorAt = new Map(), apagadasPorAt = new Map();
   for (const f of fotos) {
+    if (f.apagada_em) { apagadasPorAt.set(f.atendimento_id, (apagadasPorAt.get(f.atendimento_id) || 0) + 1); continue; }
     if (!fotosPorAt.has(f.atendimento_id)) fotosPorAt.set(f.atendimento_id, []);
     fotosPorAt.get(f.atendimento_id).push({ id: f.id, rotulo: f.rotulo, em: ms(f.criado_em), caminho: f.caminho, miniatura: f.miniatura || null });
   }
   return {
     fotoBase: fotoBase(c),
-    funcionarios,
+    ajustes: { limpezaDias: Number((ajustes.find(a => a.chave === 'limpeza_fotos_dias') || {}).valor) || 30 },
+    // Controle vê o usuário de cada pessoa e se já tem senha; a senha nunca sai daqui.
+    funcionarios: funcionarios.map(f => ctrl ? { id: f.id, nome: f.nome, nivel: f.nivel, usuario: f.usuario || '', temSenha: !!f.senha_hash } : { id: f.id, nome: f.nome, nivel: f.nivel }),
     tipos: tipos.map(t => ({ id: t.id, nome: t.nome, etapas: Array.isArray(t.etapas) ? t.etapas : [] })),
     veiculos: Object.fromEntries(veiculos.map(v => [v.placa, { placa: v.placa, descricao: v.descricao || '', criadoEm: ms(v.criado_em) }])),
     atendimentos: atendimentos.map(a => ({
       id: a.id, placa: a.placa, tipoId: a.tipo_id, tipoNome: a.tipo_nome, etapas: a.etapas || [], etapaIndex: a.etapa_index,
       feitas: a.feitas || {}, concluido: a.concluido, concluidoEm: ms(a.concluido_em), criadoEm: ms(a.criado_em),
       criadoPorNome: a.criado_por_nome || '', danos: a.danos || '', objetos: a.objetos || '',
-      valor: a.valor == null ? null : Number(a.valor), fotos: fotosPorAt.get(a.id) || [], historico: a.historico || [], versao: a.versao,
+      ...(ctrl ? { valor: a.valor == null ? null : Number(a.valor) } : {}),
+      fotos: fotosPorAt.get(a.id) || [], fotosApagadas: apagadasPorAt.get(a.id) || 0, historico: a.historico || [], versao: a.versao,
     })),
     estoque: {
       itens: itens.map(i => ({ id: i.id, nome: i.nome, unidade: i.unidade, minimo: Number(i.minimo) || 0 })),
@@ -49,6 +58,9 @@ async function carregar(c) {
 const RE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const RE_PLACA = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
 const RE_CAMINHO = /^(fotos|miniaturas)\/[a-z0-9]{8,64}\.jpg$/;
+const RE_USUARIO = /^[a-z0-9._-]{2,40}$/;
+const SO_CONTROLE = new Set(['funcionarios:salvar', 'funcionarios:remover', 'tipos:salvar', 'tipos:remover', 'itens:salvar', 'itens:remover',
+  'atendimentos:remover', 'fotos:remover', 'ajustes:salvar', 'senha:salvar']);
 const invalido = campo => erro(400, 'invalido', campo);
 const txt = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
 function id(v, campo = 'id') { const s = String(v == null ? '' : v); if (!RE_ID.test(s)) throw invalido(campo); return s; }
@@ -85,17 +97,47 @@ async function marcar(c, tabela, filtro, campos) {
   await rest(c, `${tabela}?${filtro}`, { method: 'PATCH', body: campos, prefer: 'return=minimal' });
 }
 
-async function aplicar(c, op, por, versoes) {
+async function aplicar(c, op, eu, versoes) {
   const it = op.item || {};
-  const quem = txt(por && por.nome, 80);
-  switch (`${op.col}:${op.acao}`) {
+  const quem = eu.nome;
+  const ctrl = eu.nivel === 'controle';
+  const tipoOp = `${op.col}:${op.acao}`;
+  if (!ctrl && SO_CONTROLE.has(tipoOp)) throw erro(403, 'proibido', tipoOp);
+  switch (tipoOp) {
     case 'funcionarios:salvar': {
+      const fid = id(it.id);
       const nivel = it.nivel === 'controle' ? 'controle' : 'funcionario';
+      if (fid === eu.id && nivel !== 'controle') throw erro(400, 'invalido', 'proprio_nivel');
       const nome = txt(it.nome, 60); if (!nome) throw invalido('nome');
-      return upsert(c, 'sd_funcionarios', { id: id(it.id), nome, nivel, ativo: true, atualizado_em: agora() });
+      const linha = { id: fid, nome, nivel, ativo: true, atualizado_em: agora() };
+      if (it.usuario !== undefined) {
+        const usuario = txt(it.usuario, 40).toLowerCase();
+        if (usuario && !RE_USUARIO.test(usuario)) throw invalido('usuario');
+        linha.usuario = usuario || null;
+      }
+      return upsert(c, 'sd_funcionarios', linha).catch(e => { throw e.code === 'duplicado' ? erro(409, 'usuario_em_uso') : e; });
     }
-    case 'funcionarios:remover':
-      return marcar(c, 'sd_funcionarios', `id=eq.${q(id(op.id))}`, { ativo: false, atualizado_em: agora() });
+    case 'funcionarios:remover': {
+      const fid = id(op.id); if (fid === eu.id) throw erro(400, 'invalido', 'remover_a_si');
+      return marcar(c, 'sd_funcionarios', `id=eq.${q(fid)}`, { ativo: false, atualizado_em: agora() });
+    }
+    // Nova senha. Se for de outra pessoa, as sessões abertas dela terminam.
+    case 'senha:salvar': {
+      const fid = id(it.id);
+      const senha = String(it.senha || '');
+      if (senha.length < 6 || senha.length > 200) throw invalido('senha');
+      const [f] = await rest(c, `sd_funcionarios?select=sessao_versao&id=eq.${q(fid)}`) || [];
+      if (!f) throw invalido('id');
+      return marcar(c, 'sd_funcionarios', `id=eq.${q(fid)}`, {
+        senha_hash: hashSenha(senha), sessao_versao: fid === eu.id ? f.sessao_versao : f.sessao_versao + 1,
+        login_falhas: 0, login_bloqueado_ate: null, atualizado_em: agora(),
+      });
+    }
+    case 'ajustes:salvar': {
+      if (it.chave !== 'limpeza_fotos_dias') throw invalido('chave');
+      const dias = Number(it.valor); if (!Number.isInteger(dias) || dias < 30 || dias > 40) throw invalido('valor');
+      return upsert(c, 'sd_ajustes', { chave: it.chave, valor: dias, atualizado_em: agora() }, 'chave');
+    }
 
     case 'tipos:salvar': {
       const nome = txt(it.nome, 60); if (!nome) throw invalido('nome');
@@ -118,6 +160,7 @@ async function aplicar(c, op, por, versoes) {
 
     case 'movimentos:salvar': {
       const tipo = ['entrada', 'saida', 'ajuste'].includes(it.tipo) ? it.tipo : null; if (!tipo) throw invalido('tipo');
+      if (!ctrl && tipo !== 'saida') throw erro(403, 'proibido', 'movimento');
       return inserirSeNovo(c, 'sd_estoque_movimentos', {
         id: id(it.id), item_id: id(it.itemId, 'itemId'), tipo, delta: num(it.delta, 'delta'), obs: txt(it.obs, 120),
         por_id: it.porId ? String(it.porId).slice(0, 64) : null, por_nome: txt(it.porNome, 80), em: quando(it.em, 'em') || agora(),
@@ -131,9 +174,11 @@ async function aplicar(c, op, por, versoes) {
       const linha = {
         tipo_id: idOuNulo(it.tipoId, 'tipoId'), tipo_nome: txt(it.tipoNome, 60), etapas: lista, etapa_index: idx, feitas: feitas(it.feitas),
         concluido: !!it.concluido, concluido_em: it.concluido ? quando(it.concluidoEm, 'concluidoEm') || agora() : null,
-        danos: txt(it.danos, 1000), objetos: txt(it.objetos, 600), valor: it.valor == null || it.valor === '' ? null : num(it.valor, 'valor'),
+        danos: txt(it.danos, 1000), objetos: txt(it.objetos, 600),
         historico: historico(it.historico || []), atualizado_em: agora(),
       };
+      // Valor só o Controle define. O Funcionário não recebe o valor, então não mexe nele.
+      if (ctrl) linha.valor = it.valor == null || it.valor === '' ? null : num(it.valor, 'valor');
       const atId = id(it.id);
       if (op.versao == null) {
         await rest(c, 'sd_atendimentos', {
@@ -173,10 +218,10 @@ async function aplicar(c, op, por, versoes) {
 module.exports = async (req, res) => {
   const c = config();
   if (!c) return send(res, 501, { error: 'not_configured' });
-  if (!acessoOk(req)) return send(res, 401, { error: 'unauthorized' });
 
   try {
-    if (req.method === 'GET') return send(res, 200, await carregar(c));
+    const eu = await usuarioDaSessao(c, req);
+    if (req.method === 'GET') return send(res, 200, await carregar(c, eu));
     if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
 
     let body;
@@ -186,7 +231,7 @@ module.exports = async (req, res) => {
 
     const versoes = {};
     for (let i = 0; i < ops.length; i++) {
-      try { await aplicar(c, ops[i] || {}, body.por, versoes); }
+      try { await aplicar(c, ops[i] || {}, eu, versoes); }
       catch (e) { e.index = i; e.versoes = versoes; throw e; }
     }
     return send(res, 200, { ok: true, versoes });

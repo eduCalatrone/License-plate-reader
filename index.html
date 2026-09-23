@@ -104,7 +104,7 @@ label, .label { font-weight: 600; font-size: 13px; color: var(--ink-2); }
 .field { display: grid; gap: 6px; }
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; min-width: 0; }
-input[type="text"], input[type="search"], select, textarea {
+input[type="text"], input[type="search"], input[type="password"], select, textarea {
   width: 100%; border: 1px solid var(--line-2); background: var(--surface); border-radius: 10px; padding: 11px 12px; font-size: 16px;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
@@ -604,10 +604,10 @@ let geracao = 0;           // muda quando um envio falha: descarta o que estava 
 let fila = Promise.resolve();
 const VERS = new Map();    // versão de cada atendimento no banco (evita sobrescrever outro aparelho)
 
-async function apiJson(path, { method = 'GET', body, raw, retried = false } = {}) {
+async function apiJson(path, { method = 'GET', body, raw } = {}) {
   const headers = {};
-  let code = ''; try { code = localStorage.getItem(CODE_KEY) || ''; } catch {}
-  if (code) headers['x-access-code'] = code;
+  const sessao = getSession();
+  if (sessao && sessao.token) headers.Authorization = `Bearer ${sessao.token}`;
   let payload;
   if (raw) { headers['Content-Type'] = 'application/octet-stream'; payload = raw; }
   else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
@@ -617,27 +617,21 @@ async function apiJson(path, { method = 'GET', body, raw, retried = false } = {}
   catch { throw apiError('network'); }
   finally { clearTimeout(timer); }
   let data = null; try { data = await res.json(); } catch {}
-  if (res.status === 401) {
-    try { localStorage.removeItem(CODE_KEY); } catch {}
-    if (!retried) {
-      const typed = window.prompt('Código de acesso da equipe:');
-      if (typed && typed.trim()) { try { localStorage.setItem(CODE_KEY, typed.trim()); } catch {} return apiJson(path, { method, body, raw, retried: true }); }
-    }
-    throw apiError('unauthorized');
-  }
+  // Sessão vencida, senha trocada ou pessoa removida: volta para o login.
+  if (res.status === 401 && data && data.error === 'sessao') { sessaoTerminou(); throw apiError('sessao'); }
   if (!res.ok || !data) throw apiError((data && data.error) || (res.status === 404 ? 'no_backend' : 'server'), { status: res.status });
   return data;
 }
 
 async function buscarDados({ forcar = false } = {}) {
   const antes = mudancas;
-  const d = await apiJson('api/dados');
+  const d = await apiJson('/api/dados');
   // Mudou algo enquanto buscava, ou a tela não pode ser redesenhada agora: fica com o que está na tela.
   if (!forcar && (antes !== mudancas || pendentes || !podeRedesenhar())) return false;
   FOTO_BASE = d.fotoBase || '';
   const vers = new Map();
   const atendimentos = d.atendimentos.map(({ versao, ...a }) => { vers.set(a.id, versao); return a; });
-  const novo = { funcionarios: d.funcionarios, tipos: d.tipos, veiculos: d.veiculos, atendimentos, estoque: d.estoque };
+  const novo = { funcionarios: d.funcionarios, tipos: d.tipos, veiculos: d.veiculos, atendimentos, estoque: d.estoque, ajustes: d.ajustes || { limpezaDias: 30 } };
   carregadoEm = Date.now();
   VERS.clear(); for (const [k, v] of vers) VERS.set(k, v);
   if (DB && JSON.stringify(novo) === JSON.stringify(DB)) return false; // nada mudou: mantém os mesmos objetos da tela
@@ -672,7 +666,8 @@ const ERROS_SALVAR = {
   conflito: 'Este veículo foi alterado em outro aparelho. Os dados foram atualizados: confira e faça de novo.',
   placa_em_andamento: 'Esta placa já tem um serviço em andamento.',
   network: 'Sem internet. A última alteração não foi salva.',
-  unauthorized: 'Código de acesso inválido. A alteração não foi salva.',
+  proibido: 'Só o Controle pode fazer isso.',
+  usuario_em_uso: 'Esse usuário já existe. Escolha outro.',
 };
 // Envia as operações na ordem. Se falhar: avisa, descarta a fila e recarrega do banco.
 function enviar(ops, { redesenhar: redraw = true } = {}) {
@@ -681,11 +676,11 @@ function enviar(ops, { redesenhar: redraw = true } = {}) {
   const p = fila.then(async () => {
     if (gen !== geracao) return false;
     for (const op of ops) if (op.col === 'atendimentos' && op.acao === 'salvar') op.versao = VERS.has(op.item.id) ? VERS.get(op.item.id) : null;
-    const u = me();
-    const r = await apiJson('api/dados', { method: 'POST', body: { ops, por: u ? { id: u.id, nome: u.nome } : null } });
+    const r = await apiJson('/api/dados', { method: 'POST', body: { ops } });
     for (const [id, v] of Object.entries(r.versoes || {})) VERS.set(id, v);
     return true;
   }).catch(async e => {
+    if (e && e.code === 'sessao') return false; // já voltou para o login
     if (e && e.versoes) for (const [id, v] of Object.entries(e.versoes)) VERS.set(id, v);
     geracao++;
     toast(ERROS_SALVAR[e && e.code] || 'Não foi possível salvar. Os dados foram recarregados.', true);
@@ -717,7 +712,7 @@ async function commitAgora(fn) {
 // Só troca os dados em segundo plano quando dá para redesenhar a tela sem atrapalhar quem está usando.
 function podeRedesenhar() {
   const [r] = parts();
-  if (['placa', 'novo', 'ajustes', 'entrar'].includes(r)) return false;
+  if (['placa', 'novo', 'ajustes'].includes(r)) return false;
   if (r === 'estoque' && S.stockOpen) return false;
   if (S.ocupado) return false;
   const a = document.activeElement;
@@ -732,7 +727,7 @@ function redesenhar() {
 // Busca de novo no banco se os dados tiverem mais de 20 segundos (outros aparelhos podem ter mudado algo).
 async function atualizarSeVelho(maxIdade = 20000) {
   if (!DB || pendentes || document.hidden || Date.now() - carregadoEm < maxIdade) return;
-  const s = getSession(); if (!s || s.tipo === 'cliente') return;
+  if (MODO_CLIENTE || !(getSession() || {}).token) return;
   try { if (await buscarDados()) redesenhar(); } catch {}
 }
 setInterval(() => atualizarSeVelho(), 30000);
@@ -748,13 +743,21 @@ function photoImg(f, alt, mini = true) {
 // Envia a foto (e uma miniatura para as listas). Devolve { id, caminho, miniatura }.
 async function enviarFoto(blob) {
   const id = fotoId();
-  const { caminho } = await apiJson(`api/foto?id=${id}&tipo=foto`, { method: 'POST', raw: blob });
-  let miniatura = null;
-  try {
-    const mini = await compress(blob, 480, 0.72);
-    miniatura = (await apiJson(`api/foto?id=${id}&tipo=mini`, { method: 'POST', raw: mini })).caminho;
-  } catch {} // sem miniatura, as listas usam a foto normal
-  return { id, caminho, miniatura };
+  const mini = compress(blob, 480, 0.72)
+    .then(m => apiJson(`/api/foto?id=${id}&tipo=mini`, { method: 'POST', raw: m }))
+    .then(r => r.caminho, () => null); // sem miniatura, as listas usam a foto normal
+  const { caminho } = await apiJson(`/api/foto?id=${id}&tipo=foto`, { method: 'POST', raw: blob });
+  return { id, caminho, miniatura: await mini };
+}
+// Envia várias fotos, 3 de cada vez. Devolve na mesma ordem.
+async function enviarFotos(blobs, aoEnviar) {
+  const out = new Array(blobs.length);
+  let prox = 0, feitas = 0;
+  const trabalho = async () => {
+    while (prox < blobs.length) { const i = prox++; out[i] = await enviarFoto(blobs[i]); aoEnviar && aoEnviar(++feitas); }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, blobs.length) }, trabalho));
+  return out;
 }
 
 /* ---------- Dados antigos deste aparelho (antes do banco) ----------
@@ -865,42 +868,47 @@ function movimentar(itemId, tipo, delta, obs) {
 }
 
 /* =====================================================================
-   Sessão (login simples, só escolha de perfil; não é segurança)
+   Sessão: login com usuário e senha (api/login). O token fica neste aparelho.
+   A página do cliente é separada: /cliente (sem login).
    ===================================================================== */
-const SKEY = 'sd:sessao';
+const MODO_CLIENTE = /^\/cliente\/?$/.test(location.pathname);
+const SKEY = 'sd:sessao:v2';
 function getSession() { try { return JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch { return null; } }
 function setSession(s) { try { if (s) localStorage.setItem(SKEY, JSON.stringify(s)); else localStorage.removeItem(SKEY); } catch {} }
 function me() {
-  const s = getSession(); if (!s) return null;
-  if (s.tipo === 'cliente') return { tipo: 'cliente' };
+  const s = getSession(); if (!s || !s.token) return null;
   const f = DB && funcById(s.id); if (!f) return null;
   return { tipo: f.nivel, id: f.id, nome: f.nome };
 }
 const isCtrl = () => { const u = me(); return !!u && u.tipo === 'controle'; };
-function sair() { setSession(null); S.pending = null; $('toast').hidden = true; go('#/'); }
+function esquecerDados() { DB = null; VERS.clear(); geracao++; carregadoEm = 0; }
+function sair() { setSession(null); esquecerDados(); S.pending = null; $('toast').hidden = true; go('#/'); }
+function sessaoTerminou() {
+  if (!getSession()) return;
+  setSession(null); esquecerDados();
+  go('#/');
+  toast('Sua sessão terminou. Entre de novo.', true);
+}
 
 /* =====================================================================
    Estado de tela e navegação
    ===================================================================== */
-const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null, ocupado: false };
+const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null, ocupado: false, loginAberto: null };
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent); }
 window.addEventListener('hashchange', route);
 
 function route(opts) {
   stopCamera();
-  const [r, a] = parts();
-  // A equipe precisa dos dados do banco; o cliente não (usa api/cliente).
-  const s = getSession();
-  if (!DB && (s ? s.tipo !== 'cliente' : r === 'entrar' && a !== 'cliente')) return abrirComDados();
-  const u = me();
-  if (u && u.tipo !== 'cliente') atualizarSeVelho();
   if (!(opts && opts.manterScroll)) window.scrollTo(0, 0);
-  if (!u) {
-    if (r === 'entrar') return renderLoginPick(a);
-    return renderLogin();
-  }
-  if (u.tipo === 'cliente') return renderClient(r === 'cliente' ? a : undefined);
+  const [r, a] = parts();
+  if (MODO_CLIENTE) return renderClient(r);
+  // A equipe precisa dos dados do banco.
+  const s = getSession();
+  if (s && s.token && !DB) return abrirComDados();
+  const u = me();
+  if (!u) { if (s) setSession(null); return renderLogin(); }
+  atualizarSeVelho();
   switch (r) {
     case 'placa': return renderReader();
     case 'novo': return renderNew(a);
@@ -922,14 +930,13 @@ function abrirComDados() {
     el('p', { class: 'hint', text: 'Carregando os dados…' }))));
   abrindo = buscarDados({ forcar: true })
     .then(() => { abrindo = null; route(); })
-    .catch(e => { abrindo = null; renderFalha(e); });
+    .catch(e => { abrindo = null; if (e && e.code === 'sessao') return; renderFalha(e); });
   return abrindo;
 }
 function renderFalha(e) {
   document.body.classList.add('no-nav');
   const msg = {
     network: 'Sem conexão com a internet.',
-    unauthorized: 'Código de acesso inválido.',
     not_configured: 'O servidor ainda não tem as chaves do banco.',
     no_backend: 'Sem servidor (abra pelo site publicado ou pelo servidor local).',
   }[e && e.code] || 'O banco não respondeu.';
@@ -946,14 +953,14 @@ function renderFalha(e) {
 function shell(body, { nav = true, current = '' } = {}) {
   const u = me();
   const top = el('header', { class: 'topbar' }, el('div', { class: 'topbar-in' },
-    el('a', { href: u && u.tipo !== 'cliente' ? '#/inicio' : '#/', class: 'wordmark', style: 'color:inherit;text-decoration:none', text: 'Strike Details' }),
+    el('a', { href: u ? '#/inicio' : '#/', class: 'wordmark', style: 'color:inherit;text-decoration:none', text: 'Strike Details' }),
     u ? el('div', { class: 'who' },
-      el('span', { class: 'who-name' }, u.tipo === 'cliente' ? 'Cliente' : el('b', { text: u.nome }), u.tipo === 'controle' ? ' · Controle' : ''),
+      el('span', { class: 'who-name' }, el('b', { text: u.nome }), u.tipo === 'controle' ? ' · Controle' : ''),
       el('button', { class: 'link-btn', type: 'button', onclick: sair }, 'Sair')) : null));
   const main = el('main', { class: nav ? '' : 'no-nav' }, body);
   const kids = [top, main];
-  if (nav && u && u.tipo !== 'cliente') kids.push(navBar(current));
-  document.body.classList.toggle('no-nav', !(nav && u && u.tipo !== 'cliente'));
+  if (nav && u) kids.push(navBar(current));
+  document.body.classList.toggle('no-nav', !(nav && u));
   $('app').replaceChildren(...kids);
 }
 function navBar(current) {
@@ -979,35 +986,40 @@ const backLink = (href, label) => el('a', { class: 'back', href }, icon('back'),
    ===================================================================== */
 function renderLogin() {
   document.body.classList.add('no-nav');
-  const choice = (href, ico, title, sub, dark) => el('a', { class: 'choice' + (dark ? ' dark' : ''), href },
-    el('span', { class: 'choice-ico' }, icon(ico)),
-    el('span', { class: 'choice-txt' }, el('b', { text: title }), el('span', { text: sub })),
-    el('span', { class: 'choice-go' }, icon('chev')));
+  const usuario = el('input', { id: 'l-usuario', type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', maxlength: '40', enterkeyhint: 'next' });
+  const senha = el('input', { id: 'l-senha', type: 'password', autocomplete: 'current-password', maxlength: '200', enterkeyhint: 'go' });
+  const btn = el('button', { class: 'btn btn--primary btn--lg btn--block', type: 'submit' }, 'Entrar');
+  const form = el('form', { class: 'stack', novalidate: true },
+    el('div', { class: 'field' }, el('label', { for: 'l-usuario', text: 'Usuário' }), usuario),
+    el('div', { class: 'field' }, el('label', { for: 'l-senha', text: 'Senha' }), senha),
+    btn);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const u = usuario.value.trim().toLowerCase();
+    if (!u || !senha.value) { toast('Digite o usuário e a senha.', true); (u ? senha : usuario).focus(); return; }
+    btn.disabled = true; btn.textContent = 'Entrando…';
+    try {
+      const r = await apiJson('/api/login', { method: 'POST', body: { usuario: u, senha: senha.value } });
+      setSession({ token: r.token, id: r.pessoa.id, nome: r.pessoa.nome });
+      esquecerDados();
+      go('#/inicio');
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Entrar';
+      toast({
+        login_incorreto: 'Usuário ou senha incorretos.',
+        bloqueado: 'Muitas tentativas erradas. Espere 5 minutos e tente de novo.',
+        network: 'Sem internet. Confira a conexão e tente de novo.',
+      }[err && err.code] || 'Não deu para entrar agora. Tente de novo.', true);
+      senha.select();
+    }
+  });
   $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
     el('div', { class: 'login-brand' },
       el('span', { class: 'wordmark', text: 'Strike Details' }),
-      el('p', { text: 'Controle de serviços. Escolha como quer entrar.' })),
-    el('div', { class: 'people' },
-      choice('#/entrar/funcionario', 'user', 'Funcionário', 'Ler placas, registrar etapas e retiradas'),
-      choice('#/entrar/controle', 'shield', 'Controle', 'Acesso completo ao sistema'),
-      choice('#/entrar/cliente', 'key', 'Cliente', 'Acompanhar o serviço do seu veículo', true)),
-    el('p', { class: 'login-note', text: 'Os dados ficam salvos online e aparecem em todos os aparelhos.' }))));
-}
-function renderLoginPick(tipo) {
-  if (tipo === 'cliente') { setSession({ tipo: 'cliente' }); return go('#/cliente'); }
-  if (tipo !== 'funcionario' && tipo !== 'controle') return go('#/');
-  document.body.classList.add('no-nav');
-  const lista = DB.funcionarios.filter(f => f.nivel === tipo).sort((a, b) => a.nome.localeCompare(b.nome));
-  const entrar = f => { setSession({ tipo: f.nivel, id: f.id }); go('#/inicio'); };
-  $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
-    backLink('#/', 'Voltar'),
-    el('h1', { text: tipo === 'controle' ? 'Entrar como Controle' : 'Quem é você?' }),
-    lista.length
-      ? el('div', { class: 'people' }, lista.map(f => el('button', { class: 'choice', type: 'button', onclick: () => entrar(f) },
-          el('span', { class: 'choice-ico' }, icon(tipo === 'controle' ? 'shield' : 'user')),
-          el('span', { class: 'choice-txt' }, el('b', { text: f.nome })),
-          el('span', { class: 'choice-go' }, icon('chev')))))
-      : el('p', { class: 'empty', text: 'Nenhum funcionário cadastrado. Entre como Controle e cadastre em Ajustes.' }))));
+      el('p', { text: 'Controle de serviços. Entre com seu usuário e senha.' })),
+    form,
+    el('p', { class: 'login-note', text: 'Esqueceu a senha? Peça para o Controle criar uma nova.' }))));
+  usuario.focus();
 }
 
 /* =====================================================================
@@ -1355,12 +1367,11 @@ function renderNew(placaRaw) {
     if (isCtrl() && fValor.value.trim()) { valor = parseNum(fValor.value); if (isNaN(valor)) { toast('Valor inválido.', true); return; } }
     salvar.disabled = true; salvar.textContent = 'Salvando…';
     const voltar = () => { salvar.disabled = false; salvar.textContent = 'Iniciar serviço'; };
-    const fotosMeta = [];
+    let fotosMeta;
     try {
-      for (const [i, f] of fotos.entries()) {
-        salvar.textContent = `Enviando fotos ${i + 1} de ${fotos.length}…`;
-        fotosMeta.push({ ...(await enviarFoto(f.blob)), rotulo: f.rotulo, em: Date.now() });
-      }
+      if (fotos.length) salvar.textContent = `Enviando fotos 0 de ${fotos.length}…`;
+      const enviadas = await enviarFotos(fotos.map(f => f.blob), n => { salvar.textContent = `Enviando fotos ${n} de ${fotos.length}…`; });
+      fotosMeta = enviadas.map((m, i) => ({ ...m, rotulo: fotos[i].rotulo, em: Date.now() }));
     } catch (e) {
       voltar();
       toast(e && e.code === 'network' ? 'Sem internet. As fotos não foram enviadas, tente de novo.' : 'Não foi possível enviar as fotos. Tente de novo.', true); return;
@@ -1499,7 +1510,9 @@ function renderVehicle(id) {
         el('span', { class: 'tag' + (at.concluido ? ' tag--ok' : ' tag--dark'), text: `${pct}%` })),
       el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` })),
       steps, concluirBtn),
-    el('div', { class: 'card' }, el('div', { class: 'card-head' }, el('h2', { text: 'Fotos' }), el('span', { class: 'count', text: `${at.fotos.length}` })), fotosBox),
+    el('div', { class: 'card' }, el('div', { class: 'card-head' }, el('h2', { text: 'Fotos' }), el('span', { class: 'count', text: `${at.fotos.length}` })),
+      at.fotosApagadas ? el('p', { class: 'hint', text: `${at.fotosApagadas} ${at.fotosApagadas === 1 ? 'foto foi apagada' : 'fotos foram apagadas'} pela limpeza automática (serviço concluído há mais de ${DB.ajustes.limpezaDias} dias).` }) : null,
+      fotosBox),
     el('div', { class: 'card' }, el('h2', { text: 'Estado na entrada' }), entrada),
     ctrlCard,
     el('div', { class: 'card' }, el('h2', { text: 'Histórico' }),
@@ -1655,21 +1668,78 @@ function renderSettings() {
   const novoTipo = el('input', { type: 'text', maxlength: '60', placeholder: 'Ex.: Higienização interna' });
 
   const u = me();
+  const RE_USUARIO = /^[a-z0-9._-]{2,40}$/;
+  // Grava a pessoa e, se veio, a senha nova, numa chamada só.
+  const salvarPessoa = async (mudar, senha) => {
+    const antes = JSON.parse(JSON.stringify(DB));
+    mudar(); mudancas++;
+    const ops = diffOps(antes, DB);
+    if (senha) ops.push({ col: 'senha', acao: 'salvar', item: { id: senha.id, senha: senha.senha } });
+    return !ops.length || enviar(ops, { redesenhar: false });
+  };
   const equipe = el('ul', { class: 'rows' }, DB.funcionarios.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => {
     const nivel = el('select', { 'aria-label': `Nível de ${f.nome}`, style: 'width:auto;font-size:14px;padding:8px 32px 8px 10px', disabled: f.id === u.id },
       el('option', { value: 'funcionario', selected: f.nivel === 'funcionario' }, 'Funcionário'),
       el('option', { value: 'controle', selected: f.nivel === 'controle' }, 'Controle'));
     nivel.addEventListener('change', () => commit(() => { f.nivel = nivel.value; }) && toast('Nível alterado.'));
+    const aberto = S.loginAberto === f.id;
+    let form = null;
+    if (aberto) {
+      const fu = el('input', { type: 'text', maxlength: '40', value: f.usuario || '', autocapitalize: 'none', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Usuário' });
+      const fs = el('input', { type: 'password', maxlength: '200', autocomplete: 'new-password', placeholder: f.temSenha ? 'Deixe em branco para manter' : 'Mínimo 6 caracteres', 'aria-label': 'Senha nova' });
+      const ok = el('button', { class: 'btn btn--primary grow', type: 'button', onclick: async () => {
+        const usuario = fu.value.trim().toLowerCase(), senha = fs.value;
+        if (!RE_USUARIO.test(usuario)) { toast('Usuário: de 2 a 40 letras minúsculas, números, ponto, traço ou sublinhado. Sem espaço.', true); return; }
+        if (senha && senha.length < 6) { toast('A senha precisa ter pelo menos 6 caracteres.', true); return; }
+        if (!senha && !f.temSenha) { toast('Defina uma senha.', true); return; }
+        ok.disabled = true; S.ocupado = true;
+        const feito = await salvarPessoa(() => { const x = funcById(f.id); if (x) { x.usuario = usuario; if (senha) x.temSenha = true; } }, senha ? { id: f.id, senha } : null);
+        S.ocupado = false;
+        if (feito) { S.loginAberto = null; toast(senha ? `Login salvo. ${f.nome} entra com o usuário "${usuario}".` : 'Usuário salvo.'); }
+        redraw();
+      } }, 'Salvar login');
+      form = el('div', { class: 'inline-form', style: 'margin:0 14px 12px' },
+        el('div', { class: 'field' }, el('span', { class: 'label', text: 'Usuário' }), fu),
+        el('div', { class: 'field' }, el('span', { class: 'label', text: f.temSenha ? 'Senha nova' : 'Senha' }), fs),
+        f.temSenha && f.id !== u.id ? el('p', { class: 'hint', text: 'Ao trocar a senha, os aparelhos em que essa pessoa estava logada saem do sistema.' }) : null,
+        el('div', { class: 'actions' }, ok, el('button', { class: 'btn', type: 'button', onclick: () => { S.loginAberto = null; redraw(); } }, 'Cancelar')));
+    }
     return el('li', {}, el('div', { class: 'r' },
-      el('span', { class: 'r-main' }, el('span', { class: 'r-title', text: f.nome + (f.id === u.id ? ' (você)' : '') })),
+      el('span', { class: 'r-main' },
+        el('span', { class: 'r-title', text: f.nome + (f.id === u.id ? ' (você)' : '') }),
+        el('span', { class: 'r-sub', style: f.usuario && f.temSenha ? null : 'color:var(--warn)', text: f.usuario && f.temSenha ? `Usuário: ${f.usuario}` : 'Sem login ainda' })),
       nivel,
+      el('button', { class: 'link-btn', type: 'button', style: 'font-size:13px', 'aria-expanded': String(aberto), onclick: () => { S.loginAberto = aberto ? null : f.id; redraw(); } }, 'Login'),
       f.id === u.id ? null : el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remover ${f.nome}`, onclick: () => {
-        if (!window.confirm(`Remover ${f.nome}? O histórico com o nome dele continua registrado.`)) return;
+        if (!window.confirm(`Remover ${f.nome}? A pessoa não consegue mais entrar. O histórico com o nome dela continua registrado.`)) return;
         if (commit(() => { DB.funcionarios = DB.funcionarios.filter(x => x.id !== f.id); })) redraw();
-      } }, '×')));
+      } }, '×')), form);
   }));
   const nNome = el('input', { type: 'text', maxlength: '60', placeholder: 'Nome' });
   const nNivel = el('select', {}, el('option', { value: 'funcionario' }, 'Funcionário'), el('option', { value: 'controle' }, 'Controle'));
+  const nUsuario = el('input', { type: 'text', maxlength: '40', placeholder: 'Usuário (ex.: joao)', autocapitalize: 'none', spellcheck: 'false', autocomplete: 'off' });
+  const nSenha = el('input', { type: 'password', maxlength: '200', placeholder: 'Senha (mínimo 6)', autocomplete: 'new-password' });
+  const addPessoa = el('button', { class: 'btn btn--primary', type: 'button', onclick: async () => {
+    const nome = nNome.value.trim(), usuario = nUsuario.value.trim().toLowerCase(), senha = nSenha.value;
+    if (!nome) { toast('Digite o nome.', true); return; }
+    if (!RE_USUARIO.test(usuario)) { toast('Usuário: de 2 a 40 letras minúsculas, números, ponto, traço ou sublinhado. Sem espaço.', true); return; }
+    if (DB.funcionarios.some(x => x.usuario === usuario)) { toast('Esse usuário já existe. Escolha outro.', true); return; }
+    if (senha.length < 6) { toast('A senha precisa ter pelo menos 6 caracteres.', true); return; }
+    addPessoa.disabled = true; S.ocupado = true;
+    const id = uid();
+    const feito = await salvarPessoa(() => DB.funcionarios.push({ id, nome, nivel: nNivel.value, usuario, temSenha: true }), { id, senha });
+    S.ocupado = false;
+    if (feito) toast(`${nome} adicionado. Entra com o usuário "${usuario}".`);
+    redraw();
+  } }, 'Adicionar');
+
+  const dias = el('select', { 'aria-label': 'Dias até apagar as fotos', style: 'width:auto' },
+    Array.from({ length: 11 }, (_, i) => 30 + i).map(n => el('option', { value: n, selected: n === DB.ajustes.limpezaDias }, `${n} dias`)));
+  dias.addEventListener('change', () => {
+    const n = Number(dias.value);
+    DB.ajustes.limpezaDias = n; mudancas++;
+    enviar([{ col: 'ajustes', acao: 'salvar', item: { chave: 'limpeza_fotos_dias', valor: n } }]).then(ok => ok && toast(`As fotos serão apagadas ${n} dias depois da conclusão.`));
+  });
 
   const body = el('div', { class: 'stack-lg', style: 'max-width:720px' },
     el('h1', { text: 'Ajustes' }),
@@ -1686,15 +1756,16 @@ function renderSettings() {
       equipe,
       el('div', { class: 'card' }, el('h3', { text: 'Adicionar pessoa' }),
         el('div', { class: 'row' }, nNome, el('div', { style: 'flex:.7' }, nNivel)),
-        el('div', {}, el('button', { class: 'btn btn--primary', type: 'button', onclick: () => {
-          const nome = nNome.value.trim(); if (!nome) { toast('Digite o nome.', true); return; }
-          if (commit(() => DB.funcionarios.push({ id: uid(), nome, nivel: nNivel.value }))) { toast('Pessoa adicionada.'); redraw(); }
-        } }, 'Adicionar')))),
+        el('div', { class: 'row' }, nUsuario, nSenha),
+        el('div', {}, addPessoa))),
     el('section', { class: 'stack' },
       el('h2', { text: 'Dados' }),
+      el('div', { class: 'card' }, el('h3', { text: 'Limpeza automática das fotos' }),
+        el('p', { class: 'hint', text: 'Para não encher o banco, as fotos de serviços concluídos são apagadas depois do prazo. Serviço, etapas e histórico continuam guardados. Serviços em andamento não são mexidos.' }),
+        el('div', { class: 'row', style: 'align-items:center' }, el('span', { class: 'label', style: 'flex:none', text: 'Apagar fotos depois de' }), el('div', {}, dias))),
       cartaoDadosAntigos(redraw),
       el('div', { class: 'card' },
-        el('p', { class: 'hint', text: 'Os dados ficam salvos online, no banco da Strike Details, e aparecem em todos os aparelhos. Nada é apagado: o que for excluído só sai das listas. O backup baixa uma cópia em JSON (sem as fotos).' }),
+        el('p', { class: 'hint', text: 'Os dados ficam salvos online, no banco da Strike Details, e aparecem em todos os aparelhos. O que for excluído só sai das listas: os registros continuam no banco. O backup baixa uma cópia em JSON (sem as fotos).' }),
         el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => {
           const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
           const a = el('a', { href: URL.createObjectURL(blob), download: `strike-details-backup-${new Date().toISOString().slice(0, 10)}.json` });
@@ -1804,7 +1875,7 @@ function renderClient(placaRaw) {
   const buscar = () => {
     const p = norm(input.value);
     if (!isValid(p)) { toast('Placa inválida. São 7 caracteres, como ABC1D23.', true); input.focus(); return; }
-    go(`#/cliente/${esc(p)}`);
+    go(`#/${esc(p)}`);
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); buscar(); } });
 
@@ -1819,13 +1890,13 @@ function renderClient(placaRaw) {
 async function carregarCliente(placa, box) {
   box.replaceChildren(el('p', { class: 'hint', text: 'Buscando…' }));
   let at;
-  try { at = (await apiJson(`api/cliente?placa=${esc(placa)}`)).atendimento; }
+  try { at = (await apiJson(`/api/cliente?placa=${esc(placa)}`)).atendimento; }
   catch (e) {
-    if (norm(parts()[1] || '') !== placa) return;
+    if (norm(parts()[0] || '') !== placa) return;
     box.replaceChildren(el('p', { class: 'empty', text: e && e.code === 'network' ? 'Sem internet. Confira a conexão e tente de novo.' : 'Não deu para buscar agora. Tente de novo em instantes.' }));
     return;
   }
-  if (norm(parts()[1] || '') !== placa) return; // já saiu desta tela
+  if (norm(parts()[0] || '') !== placa) return; // já saiu desta tela
   if (!at) {
     box.replaceChildren(el('p', { class: 'empty', text: `Não encontramos serviço para a placa ${fmtPlaca(placa)}. Confira a placa ou fale com a Strike Details.` }));
     return;

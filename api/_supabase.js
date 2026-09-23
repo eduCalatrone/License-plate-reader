@@ -6,11 +6,16 @@
 //   SUPABASE_KEY    chave publicável do Supabase (sb_publishable_...). Não é secreta.
 //   SD_CHAVE_BANCO  chave secreta que libera as tabelas sd_ (vai no cabeçalho x-sd-chave).
 //                   O mesmo valor fica na tabela privado.sd_config do banco.
-//   ACCESS_CODE     (opcional) código da equipe. Se existir, o site pede o código uma vez por aparelho.
+//   CRON_SECRET     chave que a Vercel manda na limpeza diária das fotos (api/limpeza).
 //
-// Regra do banco: nada é apagado. As tabelas sd_ não têm permissão de DELETE;
+// Regra do banco: registros não são apagados. As tabelas sd_ não têm permissão de DELETE;
 // "excluir" no sistema só marca o registro (excluido_em, ativo = false, removida_em).
+// A única exclusão é a dos arquivos de foto antigos, feita pela limpeza diária.
+//
+// Login: usuário e senha próprios em sd_funcionarios (senha com scrypt). O login devolve
+// um token assinado; cada chamada confere o token e se a pessoa continua ativa.
 
+const crypto = require('crypto');
 const BUCKET = 'sd-fotos';
 
 function config() {
@@ -28,10 +33,48 @@ function send(res, status, body) {
 
 const erro = (status, code, detail) => Object.assign(new Error(code), { status, code, detail });
 
-// Código da equipe (opcional). Mesmo cabeçalho usado pelo leitor de placa.
-function acessoOk(req) {
-  const code = process.env.ACCESS_CODE;
-  return !code || req.headers['x-access-code'] === code;
+/* ---------- Senhas e sessão ---------- */
+const SCRYPT = { N: 16384, r: 8, p: 1 };
+function hashSenha(senha) {
+  const salt = crypto.randomBytes(16);
+  const h = crypto.scryptSync(String(senha), salt, 32, SCRYPT);
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${h.toString('base64')}`;
+}
+function confereSenha(senha, hash) {
+  const [alg, N, r, p, salt, h] = String(hash || '').split('$');
+  if (alg !== 'scrypt' || !salt || !h) return false;
+  try {
+    const esperado = Buffer.from(h, 'base64');
+    const calc = crypto.scryptSync(String(senha), Buffer.from(salt, 'base64'), esperado.length, { N: +N, r: +r, p: +p });
+    return crypto.timingSafeEqual(calc, esperado);
+  } catch { return false; }
+}
+const DIAS_SESSAO = 60;
+const segredo = c => crypto.createHmac('sha256', c.chave).update('sd-sessao-v1').digest();
+function criarToken(c, u) {
+  const corpo = Buffer.from(JSON.stringify({ id: u.id, v: u.sessao_versao, exp: Date.now() + DIAS_SESSAO * 864e5 })).toString('base64url');
+  return `${corpo}.${crypto.createHmac('sha256', segredo(c)).update(corpo).digest('base64url')}`;
+}
+function lerToken(c, token) {
+  const [corpo, ass] = String(token || '').split('.');
+  if (!corpo || !ass) return null;
+  const certo = crypto.createHmac('sha256', segredo(c)).update(corpo).digest();
+  const veio = Buffer.from(ass, 'base64url');
+  if (veio.length !== certo.length || !crypto.timingSafeEqual(veio, certo)) return null;
+  try { const p = JSON.parse(Buffer.from(corpo, 'base64url').toString()); return p.exp > Date.now() ? p : null; } catch { return null; }
+}
+// Confere o token e devolve a pessoa (id, nome, nivel). Guarda por 30 s para não consultar o banco a cada chamada.
+const cacheSessao = new Map();
+async function usuarioDaSessao(c, req) {
+  const auth = String(req.headers.authorization || '');
+  const p = lerToken(c, auth.startsWith('Bearer ') ? auth.slice(7) : '');
+  if (!p || typeof p.id !== 'string') throw erro(401, 'sessao');
+  const k = `${p.id}:${p.v}`, hit = cacheSessao.get(k);
+  if (hit && Date.now() - hit.em < 30000) return hit.u;
+  const [u] = await rest(c, `sd_funcionarios?select=id,nome,nivel,ativo,sessao_versao&id=eq.${encodeURIComponent(p.id)}`) || [];
+  if (!u || !u.ativo || u.sessao_versao !== p.v) { cacheSessao.delete(k); throw erro(401, 'sessao'); }
+  cacheSessao.set(k, { u, em: Date.now() });
+  return u;
 }
 
 async function readJsonBody(req) {
@@ -111,6 +154,17 @@ async function uploadFoto(c, caminho, buffer) {
   throw erro(502, 'storage', data.message || data.error || `HTTP ${res.status}`);
 }
 
+// Apaga arquivos de foto (só a limpeza diária usa). Até 100 por chamada.
+async function apagarArquivos(c, caminhos) {
+  const res = await fetch(`${c.url}/storage/v1/object/${BUCKET}`, {
+    method: 'DELETE',
+    headers: { apikey: c.key, 'x-sd-chave': c.chave, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: caminhos }),
+  });
+  if (!res.ok) throw erro(502, 'storage', `HTTP ${res.status} ${await res.text().catch(() => '')}`);
+  return res.json().catch(() => []);
+}
+
 const fotoBase = c => `${c.url}/storage/v1/object/public/${BUCKET}/`;
 const ms = v => (v ? new Date(v).getTime() : null);
 const iso = v => {
@@ -118,4 +172,7 @@ const iso = v => {
   return v == null || v === '' || !Number.isFinite(n) ? null : new Date(n).toISOString();
 };
 
-module.exports = { config, send, erro, acessoOk, readJsonBody, readRawBody, rest, restAll, uploadFoto, fotoBase, ms, iso };
+module.exports = {
+  config, send, erro, readJsonBody, readRawBody, rest, restAll, uploadFoto, apagarArquivos, fotoBase, ms, iso,
+  hashSenha, confereSenha, criarToken, usuarioDaSessao,
+};

@@ -3,7 +3,7 @@
 // Responde { caminho }. O registro da foto no atendimento é gravado depois, por /api/dados.
 // Nunca sobrescreve nem apaga arquivos.
 
-const { config, send, acessoOk, readRawBody, uploadFoto } = require('./_supabase.js');
+const { config, send, readRawBody, uploadFoto, usuarioDaSessao } = require('./_supabase.js');
 
 const MAX_BYTES = 4 * 1024 * 1024; // a Vercel aceita até 4,5 MB por requisição
 
@@ -11,7 +11,8 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
   const c = config();
   if (!c) return send(res, 501, { error: 'not_configured' });
-  if (!acessoOk(req)) return send(res, 401, { error: 'unauthorized' });
+  try { await usuarioDaSessao(c, req); }
+  catch (e) { return send(res, e.status || 500, { error: e.code || 'server_error' }); }
 
   const url = new URL(req.url, 'http://localhost');
   const id = url.searchParams.get('id') || '';

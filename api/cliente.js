@@ -1,12 +1,12 @@
-// Área do cliente: só a placa. Não precisa de código de acesso.
+// Área do cliente: só a placa. Não precisa de login.
 //   GET /api/cliente?placa=ABC1D23
 // Devolve só o que o cliente pode ver: etapa atual, andamento (datas) e fotos.
 // Nunca devolve valores, danos, objetos pessoais nem nomes da equipe.
-// Fotos marcadas como "Danos" ou "Objetos pessoais" também ficam de fora.
+// Fotos marcadas como "Danos" ficam de fora (são para controle interno).
 
 const { config, send, rest, fotoBase, ms } = require('./_supabase.js');
 
-const FOTOS_OCULTAS = new Set(['Danos', 'Objetos pessoais']);
+const FOTOS_OCULTAS = new Set(['Danos']);
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') return send(res, 405, { error: 'method_not_allowed' });
@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
     const at = ats && ats[0];
     if (!at) return send(res, 200, { atendimento: null });
     const [veiculo] = await rest(c, `sd_veiculos?select=descricao&placa=eq.${placa}`) || [];
-    const fotos = await rest(c, `sd_fotos?select=rotulo,caminho,miniatura&atendimento_id=eq.${encodeURIComponent(at.id)}&removida_em=is.null&order=criado_em,id`) || [];
+    const fotos = await rest(c, `sd_fotos?select=rotulo,caminho,miniatura&atendimento_id=eq.${encodeURIComponent(at.id)}&removida_em=is.null&apagada_em=is.null&order=criado_em,id`) || [];
     const base = fotoBase(c);
     return send(res, 200, {
       atendimento: {

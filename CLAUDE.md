@@ -27,28 +27,35 @@ Sistema interno da **Strike Details Estética Automotiva** (matriz em Jaru/RO) p
 | `api/dados.js` | Lê e grava os dados da equipe no Supabase (GET tudo, POST lista de operações). |
 | `api/foto.js` | Envia uma foto (e a miniatura) para o Storage do Supabase. |
 | `api/cliente.js` | Área do cliente: só etapa, andamento e fotos de uma placa. Sem valores, danos, objetos nem nomes. |
+| `api/login.js` | Login da equipe com usuário e senha. Devolve o token da sessão. |
+| `api/limpeza.js` | Limpeza diária das fotos antigas (agendada em `vercel.json`). |
+| `vercel.json` | Região das funções (`pdx1`, perto do banco), agenda da limpeza e a página `/cliente`. |
 | `api/_supabase.js` | Peças comuns das funções acima (não vira endereço). |
 | `dev-server.js` | Servidor local sem dependências (`node dev-server.js`, porta 3000). Serve o site e roteia `/api/<nome>` para `api/<nome>.js`. A Vercel ignora. |
 | `.env.exemplo` | Modelo de variáveis para rodar local. O `.env` real nunca vai para o Git. |
 
-Variáveis na Vercel: `PLATE_RECOGNIZER_TOKEN` (secreta), `SUPABASE_URL`, `SUPABASE_KEY` (chave publicável), `SD_CHAVE_BANCO` (secreta) e `ACCESS_CODE` (opcional, código da equipe).
+Variáveis na Vercel: `PLATE_RECOGNIZER_TOKEN` (secreta), `SUPABASE_URL`, `SUPABASE_KEY` (chave publicável), `SD_CHAVE_BANCO` (secreta), `CRON_SECRET` (secreta, usada pela limpeza) e `ACCESS_CODE` (opcional, só do leitor de placa).
 
 ## Perfis de acesso
 
-O login é só a escolha do perfil (sem senha, não é segurança).
+Duas páginas separadas:
+- **Equipe** (`/`): login com usuário e senha. Cada pessoa tem o seu, criado pelo Controle em Ajustes > Equipe (botão "Login" também troca a senha).
+- **Cliente** (`/cliente`, link `/cliente#/PLACA`): sem login, só digita a placa.
+
+Login próprio (tabela `sd_funcionarios`: `usuario`, `senha_hash` com scrypt), sem o Auth do Supabase, de propósito: usuários do Auth teriam acesso às tabelas `leads`, `autorizados` e `historico` do outro sistema pelas políticas de lá. O token dura 60 dias; trocar a senha de alguém ou remover a pessoa derruba as sessões dela. 5 senhas erradas bloqueiam o usuário por 5 minutos. As regras abaixo são conferidas também no servidor (`api/dados`), e o Funcionário não recebe valores.
 
 - **Funcionário**: lê a placa, registra a entrada do veículo com fotos, conclui etapas, registra retiradas do estoque.
 - **Controle** (nível máximo): tudo do funcionário + ajustar etapa, valor do serviço, entradas/contagem/mínimo do estoque, histórico, tipos de serviço e equipe.
-- **Cliente**: só digita a placa e vê etapa atual, andamento (datas) e fotos. Nunca mostrar valores, danos, objetos pessoais nem nomes da equipe.
+- **Cliente**: só digita a placa e vê etapa atual, andamento (datas) e fotos. Nunca mostrar valores, texto de danos e de objetos pessoais nem nomes da equipe. Fotos de "Danos" ficam escondidas (controle interno); fotos de "Objetos pessoais" aparecem.
 
 ## Telas (roteamento por hash)
 
-- `#/` login · `#/entrar/funcionario|controle|cliente`
+- `#/` login da equipe (usuário e senha) · página do cliente em `/cliente` (hash `#/PLACA`)
 - `#/inicio` galeria dos veículos em serviço (foto de capa = Frente, placa, etapa atual, barra de progresso)
 - `#/placa` "Adicionar veículo": câmera ao vivo com moldura, foto da galeria ou digitar
 - `#/novo/PLACA` entrada do veículo: tipo de serviço, descrição, fotos, danos, objetos pessoais (valor só para Controle)
 - `#/veiculo/ID` etapas com botão "Concluir: etapa", fotos, estado na entrada, histórico; bloco extra do Controle
-- `#/estoque`, `#/historico` (Controle), `#/ajustes` (Controle), `#/cliente/PLACA`
+- `#/estoque`, `#/historico` (Controle), `#/ajustes` (Controle)
 - Menu inferior: Início, Adicionar (botão preto no meio), Estoque; Controle também tem Histórico e Ajustes. A aba aberta tem fundo cinza atrás do ícone.
 
 ## Regras de negócio decididas
@@ -72,20 +79,20 @@ O login é só a escolha do perfil (sem senha, não é segurança).
 ## Dados: Supabase
 
 - Projeto **"Strike Details DATABASE"** (`afngfcclipuuptskoowh`). As tabelas `leads`, `historico` e `autorizados` são de outro sistema: **não alterar**.
-- **Regra do dono: nunca apagar nada do banco.** As tabelas do controle não têm permissão de DELETE. "Excluir" no sistema só marca: `excluido_em` (atendimentos), `ativo = false` (funcionários, tipos, materiais), `removida_em` (fotos). Arquivos do Storage também não são apagados nem sobrescritos.
-- Tabelas do controle (prefixo `sd_`, com RLS): `sd_funcionarios`, `sd_tipos_servico`, `sd_veiculos`, `sd_atendimentos`, `sd_fotos`, `sd_estoque_itens`, `sd_estoque_movimentos`. Etapas, datas das etapas (`feitas`) e histórico do atendimento ficam em `jsonb` no próprio atendimento.
+- **Regra do dono: não apagar registros.** O principal é nunca afetar os dados dos clientes (tabelas do outro sistema). As tabelas do controle não têm permissão de DELETE. "Excluir" no sistema só marca: `excluido_em` (atendimentos), `ativo = false` (funcionários, tipos, materiais), `removida_em` (fotos).
+- **Única exclusão permitida: arquivos de foto antigos**, para não encher o plano grátis. `api/limpeza` roda 1x por dia (09:00 UTC) e apaga do Storage as fotos e miniaturas de serviços concluídos há mais de X dias (30 a 40, em Ajustes, tabela `sd_ajustes` chave `limpeza_fotos_dias`), de atendimentos excluídos e de fotos removidas há mais de X dias. O registro em `sd_fotos` fica, com `apagada_em`. Serviços em andamento nunca são mexidos.
+- Tabelas do controle (prefixo `sd_`, com RLS): `sd_funcionarios`, `sd_tipos_servico`, `sd_veiculos`, `sd_atendimentos`, `sd_fotos`, `sd_estoque_itens`, `sd_estoque_movimentos`, `sd_ajustes`. Etapas, datas das etapas (`feitas`) e histórico do atendimento ficam em `jsonb` no próprio atendimento.
 - Uma placa só tem um atendimento em andamento (índice único `sd_atendimentos_placa_em_andamento`).
 - Acesso: só as funções da Vercel falam com o banco. Elas mandam o cabeçalho `x-sd-chave` (variável `SD_CHAVE_BANCO`), que as políticas conferem com `privado.sd_config` pela função `privado.sd_acesso_ok()`. O navegador nunca vê essa chave.
 - Atendimentos têm `versao`: se outro aparelho mudou antes, a gravação é recusada e o site recarrega e avisa.
 - O site guarda os dados em memória no mesmo formato de antes; cada `commit()` compara antes e depois e manda as operações para `api/dados`. Recarrega do banco a cada 30 s (ou ao voltar para a aba), só quando a tela pode ser redesenhada.
 - Fotos no bucket público `sd-fotos` com nomes aleatórios: `fotos/<id>.jpg` (até 1600 px, JPEG 0,82) e `miniaturas/<id>.jpg` (480 px, usada nas listas). Plano grátis: 1 GB de arquivos, 5 GB/mês de tráfego, projeto pausa após 1 semana sem uso.
 - Dados antigos do aparelho (`localStorage` `sd:dados:v1` e fotos no IndexedDB `sd-fotos`) continuam guardados no navegador. Em Ajustes, o Controle pode enviá-los ao banco (funcionários, tipos e materiais são ligados pelo nome).
-- Pendente de decisão: limpeza automática das fotos antigas (conflita com a regra de nunca apagar; não foi feita).
-- Depois: login de verdade no lugar da escolha de perfil.
+- As funções rodam em `pdx1` (Oregon), a mesma região do banco (`us-west-2`), para cada consulta ser rápida.
 
 ## Como trabalhar neste repositório
 
 - Mudanças pontuais, sem reestruturar o que já funciona. Respostas curtas e diretas.
 - Testar antes de publicar: rodar `node dev-server.js` e conferir os fluxos (login, adicionar veículo, etapas, fotos, estoque, cliente) no tamanho de celular.
-- Nunca rodar DELETE, TRUNCATE ou DROP no banco. Mudança de estrutura só com migração nova, sem apagar dados.
+- Nunca rodar DELETE, TRUNCATE ou DROP no banco (a limpeza das fotos é a única exceção, e só no Storage). Mudança de estrutura só com migração nova, sem apagar dados. Nunca mexer em `leads`, `historico`, `autorizados` nem no Auth do Supabase.
 - Não commitar `.env` nem chaves.
