@@ -3,376 +3,365 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0E1410">
-<title>Controle Strike Details</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Archivo+Black&display=swap">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Strike Details">
+<title>Strike Details | Controle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js" defer></script>
 <style>
 :root {
-  --bg: #F1F3F0;
+  --bg: #F2F2F1;
   --surface: #FFFFFF;
-  --field: #F5F7F4;
-  --ink: #10221A;
-  --muted: #5B6960;
-  --line: #D8DFD9;
-  --accent: #2E6B49;
-  --accent-ink: #FFFFFF;
-  --chip: #E1EDE5;
-  --chip-ink: #1F4F35;
-  --danger: #A8341F;
-  --ok: #2E6B49;
-  --warn: #93611C;
-  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --shout: "Archivo Black", var(--display), sans-serif;
-  --body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --soft: #F7F7F6;
+  --ink: #121212;
+  --ink-2: #3B3B3B;
+  --muted: #6F6F6F;
+  --line: #E2E2E0;
+  --line-2: #CDCDCA;
+  --primary: #121212;
+  --primary-ink: #FFFFFF;
+  --warn: #9A5B00;
+  --warn-bg: #FFF3DC;
+  --danger: #B42318;
+  --danger-bg: #FDECEA;
+  --ok: #1D6B40;
+  --brand: "Archivo Black", "Arial Black", sans-serif;
+  --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --nav-h: 64px;
   color-scheme: light;
-  box-sizing: border-box;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0E1410; --surface: #16201A; --field: #101812; --ink: #E7EFE9; --muted: #92A398;
-    --line: #24352A; --accent: #55B57F; --accent-ink: #06140C; --chip: #1B2E22; --chip-ink: #8FDBAB;
-    --danger: #FF8A73; --ok: #55B57F; --warn: #E3B15C; color-scheme: dark;
-  }
-}
-*, *::before, *::after { box-sizing: inherit; }
+*, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { scroll-padding-top: env(safe-area-inset-top, 0px); }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.45 var(--body); -webkit-text-size-adjust: 100%; }
-button, input, textarea, select { font: inherit; color: inherit; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--body); }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+img { display: block; max-width: 100%; }
 
-.app { max-width: 720px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right)) 56px max(16px, env(safe-area-inset-left)); }
+/* ---------- Estrutura ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+}
+.topbar-in { max-width: 1040px; margin: 0 auto; height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wordmark { font: 400 17px/1 var(--brand); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who-name { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who-name b { color: var(--ink); font-weight: 600; }
+.link-btn { border: 0; background: none; padding: 8px 2px; font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
-/* Topo: marca + trocador de papel (provisório, até existir login de verdade) */
-.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0 18px; }
-.brand { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-.brand b { font: 400 19px/1.1 var(--shout); letter-spacing: .01em; white-space: nowrap; }
-.brand span { font: 500 13px var(--display); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-.role-switch { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
-.role-switch button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; font: 600 13px var(--body); color: var(--muted); }
-.role-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.dev-note { margin: 0 0 18px; font-size: 12px; color: var(--muted); }
+main {
+  max-width: 1040px; margin: 0 auto;
+  padding: 20px max(16px, env(safe-area-inset-right)) calc(var(--nav-h) + 32px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left));
+}
+main.no-nav { padding-bottom: 48px; }
+.stack { display: grid; gap: 16px; }
+.stack-lg { display: grid; gap: 28px; }
 
-/* Abas */
-.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px; scrollbar-width: none; }
-.tabs::-webkit-scrollbar { display: none; }
-.tab { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 14px; font: 600 14px var(--body); color: var(--muted); }
-.tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.view { display: grid; gap: 18px; }
+h1 { margin: 0; font: 700 30px/1.05 var(--cond); letter-spacing: .01em; }
+h2 { margin: 0; font: 700 21px/1.1 var(--cond); letter-spacing: .01em; }
+h3 { margin: 0; font: 600 15px/1.3 var(--body); }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.count { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 4px 0; color: var(--muted); font-weight: 600; font-size: 14px; }
+.back svg { width: 18px; height: 18px; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+.muted { color: var(--muted); }
 
-h1 { margin: 0; font: 400 26px var(--shout); }
-h2 { margin: 0; font: 600 21px/1.15 var(--display); letter-spacing: .01em; }
-h3 { margin: 0; font: 600 16px var(--body); }
-
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 14px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
-label { font-weight: 600; font-size: 13px; }
-.field { display: grid; gap: 5px; }
-input[type="text"], input[type="number"], input[type="search"], select, textarea {
-  width: 100%; border: 1px solid var(--line); background: var(--field);
-  border-radius: 10px; padding: 11px 13px; font-size: 16px;
+/* ---------- Navegação inferior ---------- */
+.nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left));
 }
-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) center, calc(100% - 13px) center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
-.plate-input { font: 600 22px var(--display) !important; letter-spacing: .1em; text-transform: uppercase; }
-.row { display: flex; gap: 8px; }
+.nav-in { max-width: 640px; margin: 0 auto; height: var(--nav-h); display: flex; align-items: center; justify-content: space-around; gap: 4px; }
+.nav a {
+  flex: 1; display: grid; justify-items: center; gap: 3px; padding: 6px 2px; border-radius: 10px;
+  color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600;
+}
+.nav a svg { width: 22px; height: 22px; }
+.nav a[aria-current="page"] { color: var(--ink); }
+.nav a.nav-scan { color: var(--primary-ink); }
+.nav a.nav-scan span.pill { display: grid; place-items: center; width: 52px; height: 36px; border-radius: 999px; background: var(--primary); }
+.nav a.nav-scan span.lbl { color: var(--ink); }
+.nav a.has-alert { position: relative; }
+.nav a.has-alert::after { content: ""; position: absolute; top: 5px; left: calc(50% + 7px); width: 9px; height: 9px; border-radius: 50%; background: #D97706; box-shadow: 0 0 0 2px var(--surface); }
+
+/* ---------- Formulários ---------- */
+label, .label { font-weight: 600; font-size: 13px; color: var(--ink-2); }
+.field { display: grid; gap: 6px; }
+.row { display: flex; gap: 10px; }
 .row > * { flex: 1; min-width: 0; }
-.hint { margin: 0; color: var(--muted); font-size: 13px; }
+input[type="text"], input[type="search"], select, textarea {
+  width: 100%; border: 1px solid var(--line-2); background: var(--surface); border-radius: 10px; padding: 11px 12px; font-size: 16px;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) center, calc(100% - 13px) center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+textarea { resize: vertical; min-height: 76px; }
+::placeholder { color: #9A9A98; }
+.plate-input { font: 700 24px var(--cond) !important; letter-spacing: .12em; text-transform: uppercase; }
 
-.btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 15px; }
-.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-.btn--ghost { background: none; border-color: transparent; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.btn--danger { color: var(--danger); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface);
+  font-weight: 600; font-size: 15px; text-decoration: none; color: var(--ink);
+}
+.btn svg { width: 20px; height: 20px; flex: none; }
+.btn--primary { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+.btn--danger { color: var(--danger); border-color: #EBC4BF; }
+.btn--block { width: 100%; }
+.btn--lg { min-height: 56px; font-size: 16px; }
 .btn--sm { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions > .grow { flex: 1; min-width: 160px; }
 
-.msg { margin: 0; min-height: 1.3em; font-size: 14px; color: var(--ok); }
-.msg.is-err { color: var(--danger); }
-.empty { margin: 0; color: var(--muted); font-size: 15px; padding: 18px 2px; }
-.locked { display: grid; place-items: center; gap: 10px; padding: 48px 16px; text-align: center; color: var(--muted); }
+.tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font: 600 12px/1.4 var(--body); background: var(--soft); border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.tag--dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tag--warn { background: var(--warn-bg); border-color: #F1D5A3; color: var(--warn); }
+.tag--danger { background: var(--danger-bg); border-color: #F2C3BD; color: var(--danger); }
+.tag--ok { background: #E8F3EC; border-color: #BFDCC9; color: var(--ok); }
 
-/* Progresso de etapas */
-.steps { display: flex; flex-wrap: wrap; gap: 6px; }
-.step { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 8px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font: 500 13px var(--body); color: var(--muted); }
-.step .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
-.step.is-done { color: var(--ink); }
-.step.is-done .dot { background: var(--ok); }
-.step.is-current { background: var(--chip); border-color: transparent; color: var(--chip-ink); font-weight: 600; }
-.step.is-current .dot { background: var(--accent); }
+.alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--warn-bg); border: 1px solid #F1D5A3; color: var(--warn); font-size: 14px; font-weight: 500; text-decoration: none; }
+.alert b { font-weight: 700; }
+.alert svg { width: 18px; height: 18px; flex: none; }
+.empty { margin: 0; padding: 36px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--line-2); border-radius: 14px; background: var(--surface); }
 
-/* Lista de atendimentos (painel do Controle) */
-.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.at-row { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--surface); display: grid; gap: 10px; }
-.at-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.at-plate { font: 600 20px var(--display); letter-spacing: .08em; }
-.at-service { font-size: 13px; color: var(--muted); }
-.at-badge { font: 600 12px var(--body); padding: 3px 9px; border-radius: 999px; background: var(--chip); color: var(--chip-ink); white-space: nowrap; }
-.at-badge.is-done { background: var(--ok); color: #fff; }
-.at-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.at-meta { font-size: 12px; color: var(--muted); }
-.hist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-.hist li { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); }
-.hist li span:first-child { color: var(--ink); }
+/* ---------- Login ---------- */
+.login { min-height: 100dvh; display: grid; align-content: center; justify-items: center; padding: 32px 16px; }
+.login-box { width: 100%; max-width: 420px; display: grid; gap: 24px; }
+.login-brand { display: grid; gap: 6px; }
+.login-brand .wordmark { font-size: 30px; line-height: 1.05; white-space: normal; }
+.login-brand p { margin: 0; color: var(--muted); }
+.choice {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; color: var(--ink); text-decoration: none;
+  padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+}
+.choice:hover { border-color: var(--line-2); }
+.choice-ico { width: 44px; height: 44px; border-radius: 12px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; flex: none; }
+.choice-ico svg { width: 22px; height: 22px; }
+.choice-txt { display: grid; gap: 2px; flex: 1; }
+.choice-txt b { font-size: 16px; }
+.choice-txt span { font-size: 13px; color: var(--muted); }
+.choice-go { color: var(--muted); }
+.choice.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+.choice.dark .choice-ico { background: #2A2A2A; border-color: #3A3A3A; }
+.choice.dark .choice-txt span, .choice.dark .choice-go { color: #BDBDBD; }
+.people { display: grid; gap: 8px; }
+.login-note { font-size: 12px; color: var(--muted); text-align: center; margin: 0; }
 
-.stage-editor { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.stage-editor input { flex: 1; min-width: 140px; }
-.stage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.stage-list li { display: flex; align-items: center; gap: 8px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
-.stage-list li span { flex: 1; font-size: 14px; }
-.stage-list button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 4px; }
-.stage-num { font: 600 13px var(--display); color: var(--muted); width: 1.4em; text-align: right; flex: none; }
+/* ---------- Galeria ---------- */
+.gallery { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); }
+@media (min-width: 720px) { .gallery { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; } }
+.car {
+  width: 100%; height: 100%; display: grid; grid-template-rows: auto 1fr; text-align: left; padding: 0; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.car:hover { border-color: var(--line-2); }
+.car-photo { aspect-ratio: 4 / 3; background: var(--soft); position: relative; overflow: hidden; }
+.car-photo img { width: 100%; height: 100%; object-fit: cover; }
+.car-photo .ph { position: absolute; inset: 0; display: grid; place-items: center; color: #B5B5B2; }
+.car-photo .ph svg { width: 44px; height: 44px; }
+.car-body { padding: 10px 12px 12px; display: grid; gap: 6px; align-content: start; }
+.car-plate { font: 700 21px/1 var(--cond); letter-spacing: .08em; }
+.car-desc { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.car-stage { font-size: 13px; font-weight: 600; }
+.bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--ink); }
 
-.emp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.emp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.emp-name { font-weight: 600; }
-.emp-level { font-size: 12px; color: var(--muted); }
+.search { position: relative; }
+.search input { padding-left: 38px; }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
 
-.stock-row .actions { gap: 4px; margin-top: 2px; }
-.stock-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--surface); }
-.stock-name { font-weight: 600; }
-.stock-min { font-size: 12px; color: var(--muted); }
-.stock-qty { font: 600 26px/1 var(--display); text-align: right; white-space: nowrap; }
-.stock-qty small { font: 500 13px var(--body); color: var(--muted); margin-left: 4px; }
-.stock-row.is-low { border-color: var(--warn); }
-.stock-row.is-low .stock-qty { color: var(--warn); }
-.low-tag { display: inline-block; margin-left: 6px; font: 600 11px var(--body); padding: 2px 7px; border-radius: 999px; background: var(--warn); color: #fff; vertical-align: 2px; }
+/* ---------- Placa ---------- */
+.plate { container-type: inline-size; width: 100%; max-width: 300px; }
+.plate__body { height: 34.5cqw; display: grid; grid-template-rows: minmax(0, 27fr) minmax(0, 73fr); border: .9cqw solid #151515; border-radius: 4.2cqw; overflow: hidden; background: #FAFAF8; }
+.plate__band { display: grid; place-items: center; background: #1C1C1C; color: #fff; font: 600 5.4cqw/1 var(--cond); letter-spacing: .32em; padding-left: .32em; }
+.plate__chars { display: grid; place-items: center; color: #151515; white-space: nowrap; font: 700 24cqw/1 var(--cond); letter-spacing: .04em; }
+.plate--old .plate__body { background: #C9CBCD; }
+.plate--old .plate__band { background: transparent; color: #151515; }
+.plate--ghost .plate__chars { opacity: .2; }
+.plate.is-reading .plate__chars { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .plate.is-reading .plate__chars { animation: none; opacity: .5; } }
+.plate-center { display: grid; place-items: center; }
+
+/* ---------- Leitor ---------- */
+.frame { position: relative; overflow: hidden; border-radius: 14px; background: #000; width: 100%; aspect-ratio: 3 / 4; }
+.frame video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.guide { position: absolute; left: 8%; width: 84%; aspect-ratio: 3.2 / 1; top: 50%; transform: translateY(-50%); border: 3px solid #fff; border-radius: 10px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .5); pointer-events: none; }
+.status { margin: 0; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px dashed var(--line-2); background: var(--surface); border-radius: 999px; padding: 6px 12px; font: 700 15px var(--cond); letter-spacing: .08em; }
+.or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* ---------- Veículo ---------- */
+.veh-head { display: grid; gap: 4px; }
+.veh-plate { font: 700 38px/1 var(--cond); letter-spacing: .08em; }
+.veh-sub { color: var(--muted); font-size: 14px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { display: grid; grid-template-columns: 26px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; position: relative; }
+.step + .step { border-top: 1px solid var(--line); }
+.step-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; background: var(--surface); }
+.step-dot svg { width: 14px; height: 14px; }
+.step.is-done .step-dot { background: var(--ink); border-color: var(--ink); color: #fff; }
+.step.is-current .step-dot { border-color: var(--ink); box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 10px var(--ink); }
+.step-name { font-weight: 600; padding-top: 2px; }
+.step.is-todo .step-name { color: var(--muted); font-weight: 500; }
+.step-when { font-size: 12px; color: var(--muted); padding-top: 4px; text-align: right; }
+
+.photos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.photo { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 1; background: var(--soft); border: 1px solid var(--line); }
+.photo button.open { position: absolute; inset: 0; border: 0; padding: 0; background: none; }
+.photo img { width: 100%; height: 100%; object-fit: cover; }
+.photo .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 6px 5px; font-size: 11px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .65)); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo .rm { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .6); color: #fff; font-size: 16px; line-height: 1; display: grid; place-items: center; }
+.slot { aspect-ratio: 1; border-radius: 10px; border: 1.5px dashed var(--line-2); background: var(--surface); display: grid; place-items: center; align-content: center; gap: 4px; padding: 6px; text-align: center; font-size: 12px; font-weight: 600; color: var(--ink-2); width: 100%; }
+.slot svg { width: 22px; height: 22px; color: var(--muted); }
+.slot.is-extra { border-style: solid; background: var(--soft); }
+
+.kv { display: grid; gap: 10px; margin: 0; }
+.kv div { display: grid; gap: 2px; }
+.kv dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+.kv dd { margin: 0; white-space: pre-wrap; }
+
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13px; }
+.log li { display: flex; justify-content: space-between; gap: 12px; }
+.log li span:last-child { color: var(--muted); text-align: right; white-space: nowrap; }
+
+/* ---------- Estoque ---------- */
+.stock { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.item { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; align-content: start; }
+.item.is-low { border-color: #E6C48A; }
+.item.is-out { border-color: #E9B2AA; }
+.item-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.item-name { font-weight: 600; font-size: 16px; }
+.item-min { font-size: 12px; color: var(--muted); }
+.item-qty { font: 700 40px/1 var(--cond); text-align: right; white-space: nowrap; }
+.item-qty small { font: 500 14px var(--body); color: var(--muted); margin-left: 4px; }
+.item-last { font-size: 12px; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button { width: 46px; height: 46px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font-size: 22px; line-height: 1; flex: none; }
+.stepper input { text-align: center; font: 700 22px var(--cond) !important; }
+.inline-form { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+/* ---------- Listas simples ---------- */
+.rows { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.rows > li + li { border-top: 1px solid var(--line); }
+.r { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: none; border: 0; text-align: left; }
+.r-thumb { width: 56px; height: 44px; border-radius: 8px; overflow: hidden; background: var(--soft); flex: none; }
+.r-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.r-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.r-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-side { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
+.r-plate { font: 700 18px var(--cond); letter-spacing: .08em; }
+
+.etapas { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.etapas li { display: flex; align-items: center; gap: 6px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 6px 6px 6px 10px; }
+.etapas li .n { font: 700 14px var(--cond); color: var(--muted); width: 1.4em; }
+.etapas li .t { flex: 1; font-size: 14px; }
+.icon-btn { width: 34px; height: 34px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); display: grid; place-items: center; font-size: 18px; line-height: 1; }
+.icon-btn:hover { background: var(--line); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* ---------- Cliente ---------- */
+.client { max-width: 640px; margin: 0 auto; }
+.client-hero { display: grid; gap: 8px; }
+.client-hero p { margin: 0; color: var(--muted); }
+.status-big { display: grid; gap: 8px; padding: 18px; border-radius: 14px; background: var(--ink); color: #fff; }
+.status-big .k { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: #BDBDBD; }
+.status-big .v { font: 700 30px/1.05 var(--cond); }
+.status-big .bar { background: #3A3A3A; }
+.status-big .bar > i { background: #fff; }
+
+/* ---------- Diálogos e aviso ---------- */
+dialog.viewer { border: 0; padding: 0; background: #000; max-width: 100vw; max-height: 100dvh; width: 100vw; height: 100dvh; }
+dialog.viewer::backdrop { background: rgba(0, 0, 0, .9); }
+.viewer-in { width: 100%; height: 100%; display: grid; grid-template-rows: auto 1fr; }
+.viewer-bar { display: flex; justify-content: space-between; align-items: center; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; color: #fff; }
+.viewer-bar button { border: 0; background: none; color: #fff; font-weight: 600; font-size: 15px; padding: 8px; }
+.viewer-img { display: grid; place-items: center; overflow: hidden; }
+.viewer-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px)); z-index: 40;
+  max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 12px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.toast.is-err { background: var(--danger); }
+body.no-nav .toast { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 </style>
 </head>
 <body>
-<main class="app">
-  <div class="top">
-    <div class="brand"><b>Strike Details</b><span>Controle</span></div>
-    <div class="role-switch" role="group" aria-label="Ver como">
-      <button id="role-func" type="button" aria-pressed="true">Funcionário</button>
-      <button id="role-ctrl" type="button" aria-pressed="false">Controle</button>
-    </div>
+<div id="app"></div>
+<input id="file-photo" type="file" accept="image/*" hidden>
+<input id="file-plate" type="file" accept="image/*" hidden>
+<dialog id="viewer" class="viewer" aria-label="Foto">
+  <div class="viewer-in">
+    <div class="viewer-bar"><span id="viewer-cap"></span><button id="viewer-close" type="button">Fechar</button></div>
+    <div class="viewer-img"><img id="viewer-img" alt=""></div>
   </div>
-  <p class="dev-note">Troca de papel provisória, só para testar localmente. Isso vira login de verdade depois.</p>
-
-  <nav class="tabs" role="tablist" aria-label="Seções">
-    <button class="tab" id="tab-scan" role="tab" type="button" aria-selected="true">Bater ponto</button>
-    <button class="tab" id="tab-panel" role="tab" type="button" aria-selected="false">Painel</button>
-    <button class="tab" id="tab-types" role="tab" type="button" aria-selected="false">Tipos de serviço</button>
-    <button class="tab" id="tab-team" role="tab" type="button" aria-selected="false">Funcionários</button>
-    <button class="tab" id="tab-stock" role="tab" type="button" aria-selected="false">Estoque</button>
-  </nav>
-
-  <!-- Bater ponto: fluxo do Funcionário (também acessível pelo Controle) -->
-  <section id="view-scan" class="view">
-    <div class="card">
-      <h2>Buscar veículo</h2>
-      <div class="field">
-        <label for="scan-plate">Placa</label>
-        <div class="row">
-          <input id="scan-plate" class="plate-input" type="text" maxlength="8" placeholder="ABC1D23" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="search">
-          <button id="btn-find" class="btn btn--primary" type="button">Buscar</button>
-        </div>
-      </div>
-      <p id="scan-msg" class="msg" role="status"></p>
-    </div>
-
-    <div id="scan-result"></div>
-  </section>
-
-  <!-- Painel: visão geral do Controle -->
-  <section id="view-panel" class="view" hidden>
-    <div class="card-head">
-      <h2>Veículos em serviço</h2>
-      <span class="hint" id="panel-count"></span>
-    </div>
-    <input id="panel-q" type="search" placeholder="Buscar por placa, marca ou serviço" autocomplete="off" aria-label="Buscar atendimentos">
-    <ul class="list" id="panel-list"></ul>
-    <p class="empty" id="panel-empty" hidden></p>
-  </section>
-
-  <!-- Tipos de serviço -->
-  <section id="view-types" class="view" hidden>
-    <div class="card-head">
-      <h2>Tipos de serviço</h2>
-    </div>
-    <div id="types-list" class="view"></div>
-    <div class="card">
-      <h3>Novo tipo de serviço</h3>
-      <div class="field">
-        <label for="new-type-name">Nome</label>
-        <input id="new-type-name" type="text" placeholder="Ex.: Cabine Blindada" maxlength="80">
-      </div>
-      <button id="btn-add-type" class="btn btn--primary" type="button">Criar tipo de serviço</button>
-      <p id="types-msg" class="msg" role="status"></p>
-    </div>
-  </section>
-
-  <!-- Funcionários -->
-  <section id="view-team" class="view" hidden>
-    <div class="card-head"><h2>Funcionários</h2></div>
-    <ul class="emp-list" id="team-list"></ul>
-    <div class="card">
-      <h3>Novo funcionário</h3>
-      <div class="row">
-        <div class="field"><label for="new-emp-name">Nome</label><input id="new-emp-name" type="text" maxlength="80"></div>
-        <div class="field">
-          <label for="new-emp-level">Nível</label>
-          <select id="new-emp-level">
-            <option value="funcionario">Funcionário</option>
-            <option value="controle">Controle</option>
-          </select>
-        </div>
-      </div>
-      <button id="btn-add-emp" class="btn btn--primary" type="button">Adicionar</button>
-      <p id="team-msg" class="msg" role="status"></p>
-    </div>
-  </section>
-
-  <!-- Estoque -->
-  <section id="view-stock" class="view" hidden>
-    <div class="card-head"><h2>Estoque</h2><span class="hint" id="stock-alert"></span></div>
-    <ul class="list" id="stock-list"></ul>
-
-    <div class="card">
-      <h3>Registrar movimento</h3>
-      <div class="row">
-        <div class="field">
-          <label for="mov-item">Material</label>
-          <select id="mov-item"></select>
-        </div>
-        <div class="field">
-          <label for="mov-tipo">Tipo</label>
-          <select id="mov-tipo">
-            <option value="saida">Saída (uso)</option>
-            <option value="entrada">Entrada (compra)</option>
-            <option value="ajuste">Contagem (corrige o saldo)</option>
-          </select>
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label for="mov-qtd" id="mov-qtd-label">Quantidade</label>
-          <input id="mov-qtd" type="text" inputmode="decimal" autocomplete="off" placeholder="0">
-        </div>
-        <div class="field" id="mov-placa-wrap">
-          <label for="mov-placa">Placa (opcional)</label>
-          <input id="mov-placa" class="plate-input" type="text" maxlength="8" placeholder="ABC1D23" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        </div>
-      </div>
-      <div class="field">
-        <label for="mov-obs">Observação</label>
-        <input id="mov-obs" type="text" maxlength="120" placeholder="Ex.: nota 1234, fornecedor X">
-      </div>
-      <button id="btn-mov" class="btn btn--primary" type="button">Registrar</button>
-      <p id="stock-msg" class="msg" role="status"></p>
-    </div>
-
-    <div class="card">
-      <h3>Últimos movimentos</h3>
-      <ul class="hist" id="mov-list"></ul>
-      <p class="empty" id="mov-empty" hidden>Nenhum movimento registrado ainda.</p>
-    </div>
-
-    <div class="card">
-      <h3>Novo material</h3>
-      <div class="row">
-        <div class="field"><label for="new-item-nome">Nome</label><input id="new-item-nome" type="text" maxlength="60" placeholder="Ex.: Cola de contato"></div>
-        <div class="field"><label for="new-item-unidade">Unidade</label><input id="new-item-unidade" type="text" maxlength="20" placeholder="lata, rolo, m²"></div>
-        <div class="field"><label for="new-item-min">Mínimo</label><input id="new-item-min" type="text" inputmode="decimal" autocomplete="off" placeholder="0"></div>
-      </div>
-      <button id="btn-add-item" class="btn" type="button">Adicionar material</button>
-    </div>
-  </section>
-</main>
+</dialog>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
 (() => {
 'use strict';
+
+/* =====================================================================
+   Utilitários
+   ===================================================================== */
 const $ = id => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
     if (k === 'class') n.className = v;
     else if (k === 'text') n.textContent = v;
+    else if (k === 'html') n.innerHTML = v; // só usado com SVG fixo deste arquivo
     else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
     else if (v === true) n.setAttribute(k, '');
-    else if (v !== false && v != null) n.setAttribute(k, v);
+    else n.setAttribute(k, v);
   }
-  for (const c of kids.flat()) if (c != null) n.append(c);
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
   return n;
 };
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const norm = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
-const RE_VALID = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
-const isValid = p => RE_VALID.test(p);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const esc = s => encodeURIComponent(s);
 
-/* ---------- Armazenamento local (troca depois por banco compartilhado) ---------- */
-const KEY = 'strike:controle:v1';
-function loadDB() {
-  try {
-    const d = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (d && d.tipos && d.funcionarios && d.atendimentos) {
-      if (!d.estoque) d.estoque = { itens: [], movimentos: [], semeado: false }; // dados salvos antes do estoque existir
-      return d;
-    }
-  } catch {}
-  return { tipos: [], funcionarios: [], atendimentos: [], estoque: { itens: [], movimentos: [], semeado: false } };
-}
-let DB = loadDB();
-function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(DB)); return true; }
-  catch { return false; }
-}
-
-/* ---------- Semente inicial, só na primeira vez (sem dado nenhum salvo ainda) ---------- */
-function seedIfEmpty() {
-  if (DB.tipos.length || DB.funcionarios.length || DB.atendimentos.length) return;
-  DB.tipos.push({ id: uid(), nome: 'Cabine Blindada', etapas: ['Inspeção', 'Desmontagem', 'Limpeza externa', 'Limpeza interna', 'Limpeza de peças desmontadas', 'Montagem'] });
-  DB.funcionarios.push({ id: uid(), nome: 'Controle geral', nivel: 'controle' });
-  persist();
-}
-seedIfEmpty();
-function seedStock() {
-  if (DB.estoque.semeado) return;
-  DB.estoque.itens.push({ id: uid(), nome: 'Espuma expansiva', unidade: 'lata', minimo: 0 });
-  DB.estoque.itens.push({ id: uid(), nome: 'Manta asfáltica', unidade: 'rolo', minimo: 0 });
-  DB.estoque.semeado = true;
-  persist();
-}
-seedStock();
-
-/* ---------- Estado de sessão (não salvo: troca de papel é só pra testar local) ---------- */
-const S = { role: 'funcionario', tab: 'scan', found: null };
-
-/* ---------- Regras de atendimento ---------- */
-function tipoOf(at) { return DB.tipos.find(t => t.id === at.tipoServicoId); }
-function etapaAtual(at) {
-  const t = tipoOf(at);
-  if (!t) return at.concluido ? 'Concluído' : '—';
-  return at.concluido ? 'Concluído' : (t.etapas[at.etapaIndex] || 'Concluído');
-}
-function ativosPorPlaca(placa) {
-  return DB.atendimentos.filter(a => a.placa === placa && !a.concluido);
-}
-function avancarEtapa(at, funcionario) {
-  const t = tipoOf(at);
-  if (!t || at.concluido) return;
-  const nomeEtapa = t.etapas[at.etapaIndex];
-  at.historico.push({ etapa: nomeEtapa, funcionarioId: funcionario ? funcionario.id : null, funcionarioNome: funcionario ? funcionario.nome : 'Controle', timestamp: Date.now() });
-  at.etapaIndex++;
-  if (at.etapaIndex >= t.etapas.length) at.concluido = true;
-}
-function definirEtapa(at, novoIndex, funcionario) {
-  const t = tipoOf(at); if (!t) return;
-  novoIndex = Math.max(0, Math.min(novoIndex, t.etapas.length));
-  const concluidoAntes = at.concluido;
-  const nomeAntes = concluidoAntes ? 'Concluído' : t.etapas[at.etapaIndex];
-  at.etapaIndex = Math.min(novoIndex, t.etapas.length - 1);
-  at.concluido = novoIndex >= t.etapas.length;
-  const nomeDepois = at.concluido ? 'Concluído' : t.etapas[at.etapaIndex];
-  if (nomeAntes !== nomeDepois) {
-    at.historico.push({ etapa: `${nomeAntes} → ${nomeDepois}`, funcionarioId: funcionario ? funcionario.id : null, funcionarioNome: funcionario ? funcionario.nome : 'Controle', timestamp: Date.now(), ajuste: true });
-  }
-}
+const ICON = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>',
+  scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 12h10"/></svg>',
+  box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M3 13l2-5a2 2 0 0 1 1.9-1.3h10.2A2 2 0 0 1 19 8l2 5v4a1 1 0 0 1-1 1h-1M4 18H3v-5"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M7 11h4M7 15h8"/></svg>',
+  chev: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19L12 3z"/><path d="M12 10v4M12 17.5v.01"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+};
+const icon = name => el('span', { html: ICON[name], 'aria-hidden': 'true', style: 'display:contents' });
 
 const rtf = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
 function ago(ts) {
@@ -381,333 +370,1154 @@ function ago(ts) {
   if (s < 60) return 'agora';
   const m = s / 60; if (m < 60) return rtf.format(-Math.round(m), 'minute');
   const h = m / 60; if (h < 24) return rtf.format(-Math.round(h), 'hour');
-  return rtf.format(-Math.floor(h / 24), 'day');
+  const d = Math.floor(h / 24); if (d < 30) return rtf.format(-d, 'day');
+  return rtf.format(-Math.floor(d / 30), 'month');
 }
-const timers = {};
-function flash(id, text, err = false) {
-  const n = $(id); n.textContent = text; n.classList.toggle('is-err', err);
-  clearTimeout(timers[id]); timers[id] = setTimeout(() => { n.textContent = ''; }, 4000);
+const fmtDataHora = ts => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(ts);
+const fmtData = ts => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(ts);
+const fmtQ = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+const fmtBRL = n => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const round2 = n => Math.round(n * 100) / 100;
+// Aceita "2,5", "2.5" e "1.960,00". Com vírgula, o ponto é separador de milhar.
+const parseNum = raw => {
+  let t = String(raw || '').trim();
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+};
+
+let toastTimer;
+function toast(text, err = false) {
+  const t = $('toast'); t.textContent = text; t.classList.toggle('is-err', err); t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3800);
 }
 
-/* ---------- Abas e papel ---------- */
-const TABS = ['scan', 'panel', 'types', 'team', 'stock'];
-function applyRoleVisibility() {
-  const isCtrl = S.role === 'controle';
-  $('tab-stock').hidden = !isCtrl;
-  $('tab-panel').hidden = !isCtrl;
-  $('tab-types').hidden = !isCtrl;
-  $('tab-team').hidden = !isCtrl;
-  if (!isCtrl && S.tab !== 'scan') selectTab('scan');
+/* =====================================================================
+   Placa: validação e correção (igual ao leitor anterior)
+   ===================================================================== */
+const RE_VALID = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/;
+const RE_OLD = /^[A-Z]{3}[0-9]{4}$/;
+const RE_NEW = /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/;
+const norm = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+const isValid = p => RE_VALID.test(p);
+const fmtPlaca = p => RE_OLD.test(p) ? p.slice(0, 3) + '-' + p.slice(3) : p;
+const L2D = { O: '0', Q: '0', D: '0', I: '1', L: '1', Z: '2', S: '5', G: '6', B: '8' };
+const D2L = { '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '6': 'G', '8': 'B' };
+function fixByPosition(p) {
+  if (p.length !== 7) return p;
+  return [...p].map((ch, i) => {
+    if (i < 3) return D2L[ch] ?? ch;
+    if (i === 3 || i >= 5) return L2D[ch] ?? ch;
+    return ch;
+  }).join('');
 }
-function selectTab(name) {
-  if (!isCtrl() && name !== 'scan') name = 'scan';
-  S.tab = name;
-  for (const t of TABS) {
-    $(`tab-${t}`).setAttribute('aria-selected', String(t === name));
-    $(`view-${t}`).hidden = t !== name;
+function mismatches(w) {
+  let m = 0;
+  for (let i = 0; i < 7; i++) {
+    const isL = w[i] >= 'A' && w[i] <= 'Z', isD = w[i] >= '0' && w[i] <= '9';
+    if (i < 3) { if (!isL) m++; } else if (i !== 4) { if (!isD) m++; }
   }
-  if (name === 'panel') renderPanel();
-  if (name === 'types') renderTypes();
-  if (name === 'team') renderTeam();
-  if (name === 'stock') renderStock();
+  return m;
 }
-function isCtrl() { return S.role === 'controle'; }
-function setRole(role) {
-  S.role = role;
-  $('role-func').setAttribute('aria-pressed', String(role === 'funcionario'));
-  $('role-ctrl').setAttribute('aria-pressed', String(role === 'controle'));
-  applyRoleVisibility();
-  selectTab(S.tab);
+function extractPlates(strings) {
+  const out = new Map();
+  for (const s of strings) {
+    const t = String(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (let i = 0; i + 7 <= t.length; i++) {
+      const w = t.slice(i, i + 7), m = mismatches(w);
+      if (m > 2) continue;
+      const p = fixByPosition(w);
+      if (!isValid(p)) continue;
+      if (!out.has(p) || m < out.get(p)) out.set(p, m);
+    }
+  }
+  return out;
+}
+function toGray(d) {
+  const n = d.length / 4, g = new Uint8ClampedArray(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) g[i] = (d[j] * 299 + d[j + 1] * 587 + d[j + 2] * 114) / 1000;
+  return g;
+}
+function stretch(g) {
+  const h = new Uint32Array(256), n = g.length;
+  for (let i = 0; i < n; i++) h[g[i]]++;
+  let lo = 0, hi = 255, acc = 0;
+  while (lo < 255 && (acc += h[lo]) < n * 0.02) lo++;
+  acc = 0;
+  while (hi > 0 && (acc += h[hi]) < n * 0.02) hi--;
+  if (hi - lo < 20) return g;
+  const out = new Uint8ClampedArray(n), s = 255 / (hi - lo);
+  for (let i = 0; i < n; i++) out[i] = (g[i] - lo) * s;
+  return out;
+}
+function otsu(g) {
+  const h = new Uint32Array(256), n = g.length;
+  for (let i = 0; i < n; i++) h[g[i]]++;
+  let sum = 0; for (let t = 0; t < 256; t++) sum += t * h[t];
+  let sB = 0, wB = 0, max = 0, th = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += h[t]; if (!wB) continue;
+    const wF = n - wB; if (!wF) break;
+    sB += t * h[t];
+    const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > max) { max = v; th = t; }
+  }
+  return th;
+}
+function binarize(g) {
+  const t = otsu(g), out = new Uint8ClampedArray(g.length);
+  let dark = 0;
+  for (let i = 0; i < g.length; i++) { const v = g[i] > t ? 255 : 0; out[i] = v; if (!v) dark++; }
+  if (dark > g.length / 2) for (let i = 0; i < out.length; i++) out[i] = 255 - out[i];
+  return out;
+}
+function grayToRGBA(g, d) {
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) { d[j] = d[j + 1] = d[j + 2] = g[i]; d[j + 3] = 255; }
 }
 
-/* ---------- Buscar / bater ponto ---------- */
-function renderScanResult() {
-  const box = $('scan-result');
-  const placa = S.found;
-  if (!placa) { box.replaceChildren(); return; }
-  const ativos = ativosPorPlaca(placa);
+/* ---------- Leitura local (reserva): Tesseract no navegador ---------- */
+let workerP = null;
+function getWorker() {
+  if (!workerP) {
+    workerP = (async () => {
+      if (!window.Tesseract) throw Object.assign(new Error('lib'), { code: 'lib' });
+      const w = await Tesseract.createWorker('eng', 1, { logger: m => { if (S.onOcr) S.onOcr(m); } });
+      await w.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', preserve_interword_spaces: '0' });
+      return w;
+    })().catch(e => { workerP = null; throw e; });
+  }
+  return workerP;
+}
+function prep(src, kind, targetW, topCut = 0) {
+  const sy = Math.round(src.height * topCut), sh = src.height - sy;
+  const w = Math.round(targetW), h = Math.max(1, Math.round(sh * (w / src.width))), pad = 16;
+  const cv = document.createElement('canvas'); cv.width = w + pad * 2; cv.height = h + pad * 2;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(src, 0, sy, src.width, sh, pad, pad, w, h);
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  let g = stretch(toGray(img.data));
+  if (kind === 'otsu') g = binarize(g);
+  grayToRGBA(g, img.data); ctx.putImageData(img, 0, 0);
+  return cv;
+}
+async function readLocal(canvas, mode) {
+  const w = await getWorker();
+  const variants = mode === 'crop'
+    ? [prep(canvas, 'otsu', 480), prep(canvas, 'gray', 480), prep(canvas, 'otsu', 480, 0.34), prep(canvas, 'gray', 480, 0.34)]
+    : [prep(canvas, 'gray', Math.min(canvas.width, 1600))];
+  await w.setParameters({ tessedit_pageseg_mode: mode === 'crop' ? '7' : '6' });
+  const seen = new Map();
+  for (const v of variants) {
+    const { data } = await w.recognize(v);
+    const lines = String(data.text || '').split('\n'); lines.push(lines.join(''));
+    for (const [p, m] of extractPlates(lines)) {
+      const s = seen.get(p) || { n: 0, m: 9, conf: 0 };
+      s.n++; s.m = Math.min(s.m, m); s.conf = Math.max(s.conf, data.confidence || 0);
+      seen.set(p, s);
+    }
+  }
+  let best = null, bestScore = -Infinity;
+  for (const [p, s] of seen) {
+    const score = s.n * 10 - s.m * 4 + s.conf / 100;
+    if (score > bestScore) { best = { p, ...s }; bestScore = score; }
+  }
+  if (!best) return { plate: null };
+  const confidence = best.m >= 2 || (best.conf > 0 && best.conf < 50) ? 'baixa' : (best.n >= 2 && best.m === 0 ? 'alta' : 'media');
+  return { plate: best.p, confidence };
+}
 
-  if (!ativos.length) {
-    box.replaceChildren(startCard(placa));
+/* ---------- Leitura principal: serviço de placas via api/read-plate (sem mudanças) ---------- */
+const API_URL = 'api/read-plate';
+const CODE_KEY = 'placas:codigo';
+const apiError = (code, extra) => Object.assign(new Error(code), { code }, extra);
+const API_NOTES = {
+  no_backend: 'Sem servidor de leitura (abra pelo site publicado ou pelo servidor local).',
+  not_configured: 'O servidor ainda não tem a chave do serviço de leitura.',
+  network: 'Sem conexão com o servidor de leitura.',
+  rate_limited: 'Limite do serviço de leitura atingido.',
+  too_large: 'A imagem ficou grande demais para o serviço.',
+  upstream: 'O serviço de leitura falhou.',
+};
+async function callApi(canvas, retried = false) {
+  const image = canvas.toDataURL('image/jpeg', 0.85);
+  const headers = { 'Content-Type': 'application/json' };
+  let code = ''; try { code = localStorage.getItem(CODE_KEY) || ''; } catch {}
+  if (code) headers['x-access-code'] = code;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+  let res;
+  try { res = await fetch(API_URL, { method: 'POST', headers, body: JSON.stringify({ image }), signal: ctl.signal }); }
+  catch { throw apiError('network'); }
+  finally { clearTimeout(timer); }
+  let data = null; try { data = await res.json(); } catch {}
+  if (res.status === 401) {
+    try { localStorage.removeItem(CODE_KEY); } catch {}
+    if (!retried) {
+      const typed = window.prompt('Código de acesso do leitor:');
+      if (typed && typed.trim()) { try { localStorage.setItem(CODE_KEY, typed.trim()); } catch {} return callApi(canvas, true); }
+    }
+    throw apiError('unauthorized');
+  }
+  if (res.status === 501) throw apiError('not_configured');
+  if (res.status === 429) throw apiError('rate_limited');
+  if (res.status === 413) throw apiError('too_large');
+  if (!data || res.status === 404 || res.status === 405) throw apiError('no_backend');
+  if (!res.ok) throw apiError('upstream', { detail: data.error });
+  return data;
+}
+async function readPlate(frame, crop, mode) {
+  let note = '';
+  try {
+    const d = await callApi(frame);
+    const p = fixByPosition(norm(d.plate));
+    const alts = (d.alternatives || []).map(norm).filter(a => isValid(a) && a !== p).slice(0, 3);
+    if (!isValid(p)) return { plate: null, alts, engine: 'api' };
+    const s = Number(d.score) || 0;
+    return { plate: p, alts, engine: 'api', confidence: s >= 0.85 ? 'alta' : s >= 0.6 ? 'media' : 'baixa' };
+  } catch (e) {
+    if (e.code === 'unauthorized') throw e;
+    note = API_NOTES[e.code] || API_NOTES.upstream;
+  }
+  const out = await readLocal(crop, mode);
+  return { ...out, alts: [], engine: 'local', note };
+}
+
+/* =====================================================================
+   Dados (neste aparelho). Fotos ficam no IndexedDB; o resto no localStorage.
+   ===================================================================== */
+const DKEY = 'sd:dados:v1';
+const blank = () => ({ versao: 1, funcionarios: [], tipos: [], veiculos: {}, atendimentos: [], estoque: { itens: [], movimentos: [] } });
+function loadDB() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DKEY) || 'null');
+    if (d && d.versao === 1) { const b = blank(); return { ...b, ...d, estoque: { ...b.estoque, ...(d.estoque || {}) } }; }
+  } catch {}
+  return null;
+}
+function persist() {
+  try { localStorage.setItem(DKEY, JSON.stringify(DB)); return true; } catch { return false; }
+}
+// Aplica uma mudança; se o aparelho não conseguir salvar, desfaz e avisa.
+function commit(fn) {
+  const before = JSON.stringify(DB);
+  fn();
+  if (!persist()) { DB = JSON.parse(before); toast('Não foi possível salvar neste aparelho. Libere espaço ou saia da aba anônima.', true); return false; }
+  return true;
+}
+function seed() {
+  DB.funcionarios.push(
+    { id: uid(), nome: 'Eduardo', nivel: 'controle' },
+    { id: uid(), nome: 'Petherson', nivel: 'controle' },
+    { id: uid(), nome: 'Funcionário teste', nivel: 'funcionario' });
+  DB.tipos.push({ id: uid(), nome: 'Cabine Blindada', etapas: ['Inspeção', 'Desmontagem', 'Limpeza externa', 'Limpeza interna', 'Limpeza de peças desmontadas', 'Montagem'] });
+  DB.estoque.itens.push(
+    { id: uid(), nome: 'Espuma expansiva', unidade: 'lata', minimo: 0 },
+    { id: uid(), nome: 'Manta asfáltica', unidade: 'rolo', minimo: 0 });
+}
+let DB = loadDB();
+if (!DB) { DB = blank(); seed(); persist(); }
+
+/* ---------- Fotos (IndexedDB) ---------- */
+let idbP = null;
+function idb() {
+  if (!idbP) idbP = new Promise((res, rej) => {
+    const r = indexedDB.open('sd-fotos', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('fotos');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return idbP;
+}
+async function fotoPut(id, blob) {
+  const db = await idb();
+  await new Promise((res, rej) => {
+    const tx = db.transaction('fotos', 'readwrite'); tx.objectStore('fotos').put(blob, id);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  });
+}
+async function fotoGet(id) {
+  const db = await idb();
+  return new Promise((res, rej) => { const r = db.transaction('fotos').objectStore('fotos').get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); });
+}
+async function fotoDel(id) {
+  try { const db = await idb(); db.transaction('fotos', 'readwrite').objectStore('fotos').delete(id); } catch {}
+  const u = urlCache.get(id); if (u) { URL.revokeObjectURL(u); urlCache.delete(id); }
+}
+const urlCache = new Map();
+async function fotoUrl(id) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const b = await fotoGet(id); if (!b) return null;
+  const u = URL.createObjectURL(b); urlCache.set(id, u); return u;
+}
+function photoImg(id, alt) {
+  const img = el('img', { alt: alt || '', decoding: 'async' });
+  fotoUrl(id).then(u => { if (u) img.src = u; }).catch(() => {});
+  return img;
+}
+async function compress(fileOrBlob, max = 1600, q = 0.82) {
+  const url = URL.createObjectURL(fileOrBlob);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(img.naturalWidth * sc)); cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return await canvasBlob(cv, q);
+  } finally { URL.revokeObjectURL(url); }
+}
+const canvasBlob = (cv, q = 0.82) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('blob')), 'image/jpeg', q));
+
+// Abre o seletor de foto (no celular oferece câmera ou galeria) e devolve o arquivo escolhido.
+function pickPhoto() {
+  return new Promise(resolve => {
+    const inp = $('file-photo');
+    inp.value = '';
+    inp.onchange = () => resolve(inp.files && inp.files[0] ? inp.files[0] : null);
+    inp.click();
+  });
+}
+
+/* ---------- Regras ---------- */
+const ROTULOS = ['Frente', 'Traseira', 'Lateral esquerda', 'Lateral direita', 'Placa', 'Acessórios'];
+const ROTULOS_EXTRA = ['Danos', 'Interior', 'Objetos pessoais', 'Outra'];
+const tipoById = id => DB.tipos.find(t => t.id === id);
+const funcById = id => DB.funcionarios.find(f => f.id === id);
+const ativos = () => DB.atendimentos.filter(a => !a.concluido).sort((a, b) => b.criadoEm - a.criadoEm);
+const ativoDaPlaca = p => DB.atendimentos.find(a => a.placa === p && !a.concluido);
+const atendimentosDaPlaca = p => DB.atendimentos.filter(a => a.placa === p).sort((a, b) => b.criadoEm - a.criadoEm);
+const etapaAtual = at => at.concluido ? 'Concluído' : at.etapas[at.etapaIndex];
+const progresso = at => at.concluido ? 1 : at.etapaIndex / at.etapas.length;
+function capaDe(at) {
+  const f = at.fotos.find(x => x.rotulo === 'Frente') || at.fotos.find(x => x.rotulo !== 'Placa') || at.fotos[0];
+  return f ? f.id : null;
+}
+function registrar(at, texto) {
+  const u = me();
+  at.historico.push({ texto, em: Date.now(), porId: u ? u.id : null, porNome: u ? u.nome : '' });
+}
+function concluirEtapa(at) {
+  const nome = at.etapas[at.etapaIndex];
+  at.feitas[at.etapaIndex] = Date.now();
+  registrar(at, `${nome} concluída`);
+  at.etapaIndex++;
+  if (at.etapaIndex >= at.etapas.length) { at.concluido = true; at.concluidoEm = Date.now(); at.etapaIndex = at.etapas.length - 1; registrar(at, 'Serviço concluído'); }
+}
+// Controle pode mover para qualquer etapa (ou concluir / reabrir).
+function ajustarEtapa(at, idx) {
+  const antes = etapaAtual(at), total = at.etapas.length;
+  const now = Date.now();
+  if (idx >= total) {
+    for (let i = 0; i < total; i++) if (!at.feitas[i]) at.feitas[i] = now;
+    at.concluido = true; at.concluidoEm = at.concluidoEm || now; at.etapaIndex = total - 1;
+  } else {
+    for (let i = 0; i < total; i++) { if (i < idx) { if (!at.feitas[i]) at.feitas[i] = now; } else delete at.feitas[i]; }
+    at.concluido = false; at.concluidoEm = null; at.etapaIndex = idx;
+  }
+  const depois = etapaAtual(at);
+  if (antes !== depois) registrar(at, `Etapa ajustada: ${antes} para ${depois}`);
+}
+
+/* ---------- Estoque: o saldo é sempre a soma dos movimentos ---------- */
+function saldo(itemId) {
+  return round2(DB.estoque.movimentos.filter(m => m.itemId === itemId).reduce((s, m) => s + m.delta, 0));
+}
+function situacao(item) {
+  const s = saldo(item.id);
+  if (s < 0) return { k: 'neg', txt: 'Saldo negativo', cls: 'tag--danger' };
+  if (s === 0) return { k: 'out', txt: 'Sem estoque', cls: 'tag--danger' };
+  if (item.minimo > 0 && s <= item.minimo) return { k: 'low', txt: 'Acabando', cls: 'tag--warn' };
+  return { k: 'ok', txt: '', cls: '' };
+}
+const itensEmAlerta = () => DB.estoque.itens.filter(it => situacao(it).k !== 'ok');
+function movimentar(itemId, tipo, delta, obs) {
+  const u = me();
+  DB.estoque.movimentos.push({ id: uid(), itemId, tipo, delta: round2(delta), obs: obs || '', porId: u ? u.id : null, porNome: u ? u.nome : '', em: Date.now() });
+}
+
+/* =====================================================================
+   Sessão (login simples, só escolha de perfil; não é segurança)
+   ===================================================================== */
+const SKEY = 'sd:sessao';
+function getSession() { try { return JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch { return null; } }
+function setSession(s) { try { if (s) localStorage.setItem(SKEY, JSON.stringify(s)); else localStorage.removeItem(SKEY); } catch {} }
+function me() {
+  const s = getSession(); if (!s) return null;
+  if (s.tipo === 'cliente') return { tipo: 'cliente' };
+  const f = funcById(s.id); if (!f) return null;
+  return { tipo: f.nivel, id: f.id, nome: f.nome };
+}
+const isCtrl = () => { const u = me(); return !!u && u.tipo === 'controle'; };
+function sair() { setSession(null); S.pending = null; $('toast').hidden = true; go('#/'); }
+
+/* =====================================================================
+   Estado de tela e navegação
+   ===================================================================== */
+const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null };
+function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent); }
+window.addEventListener('hashchange', route);
+
+function route() {
+  stopCamera();
+  const u = me();
+  const [r, a] = parts();
+  window.scrollTo(0, 0);
+  if (!u) {
+    if (r === 'entrar') return renderLoginPick(a);
+    return renderLogin();
+  }
+  if (u.tipo === 'cliente') return renderClient(r === 'cliente' ? a : undefined);
+  switch (r) {
+    case 'placa': return renderReader();
+    case 'novo': return renderNew(a);
+    case 'veiculo': return renderVehicle(a);
+    case 'estoque': return renderStock();
+    case 'historico': return isCtrl() ? renderHistory() : go('#/inicio');
+    case 'ajustes': return isCtrl() ? renderSettings() : go('#/inicio');
+    default: return renderHome();
+  }
+}
+
+// Monta a tela: barra do topo, conteúdo e (para a equipe) navegação inferior.
+function shell(body, { nav = true, current = '' } = {}) {
+  const u = me();
+  const top = el('header', { class: 'topbar' }, el('div', { class: 'topbar-in' },
+    el('a', { href: u && u.tipo !== 'cliente' ? '#/inicio' : '#/', class: 'wordmark', style: 'color:inherit;text-decoration:none', text: 'Strike Details' }),
+    u ? el('div', { class: 'who' },
+      el('span', { class: 'who-name' }, u.tipo === 'cliente' ? 'Cliente' : el('b', { text: u.nome }), u.tipo === 'controle' ? ' · Controle' : ''),
+      el('button', { class: 'link-btn', type: 'button', onclick: sair }, 'Sair')) : null));
+  const main = el('main', { class: nav ? '' : 'no-nav' }, body);
+  const kids = [top, main];
+  if (nav && u && u.tipo !== 'cliente') kids.push(navBar(current));
+  document.body.classList.toggle('no-nav', !(nav && u && u.tipo !== 'cliente'));
+  $('app').replaceChildren(...kids);
+}
+function navBar(current) {
+  const item = (href, key, label, ico, cls = '') => el('a', { href, class: cls, 'aria-current': current === key ? 'page' : null },
+    cls === 'nav-scan' ? el('span', { class: 'pill' }, icon(ico)) : icon(ico),
+    el('span', { class: 'lbl', text: label }));
+  const alerta = itensEmAlerta().length;
+  const inicio = item('#/inicio', 'inicio', 'Início', 'home');
+  const estoque = item('#/estoque', 'estoque', 'Estoque', 'box', alerta && isCtrl() ? 'has-alert' : '');
+  if (alerta && isCtrl()) estoque.setAttribute('aria-label', `Estoque, ${alerta} ${alerta === 1 ? 'aviso' : 'avisos'}`);
+  const ler = item('#/placa', 'placa', 'Ler placa', 'scan', 'nav-scan');
+  // "Ler placa" fica sempre no meio.
+  const items = isCtrl()
+    ? [inicio, estoque, ler, item('#/historico', 'historico', 'Histórico', 'clock'), item('#/ajustes', 'ajustes', 'Ajustes', 'gear')]
+    : [inicio, ler, estoque];
+  return el('nav', { class: 'nav', 'aria-label': 'Menu' }, el('div', { class: 'nav-in' }, items));
+}
+const backLink = (href, label) => el('a', { class: 'back', href }, icon('back'), label);
+
+/* =====================================================================
+   Tela: login
+   ===================================================================== */
+function renderLogin() {
+  document.body.classList.add('no-nav');
+  const choice = (href, ico, title, sub, dark) => el('a', { class: 'choice' + (dark ? ' dark' : ''), href },
+    el('span', { class: 'choice-ico' }, icon(ico)),
+    el('span', { class: 'choice-txt' }, el('b', { text: title }), el('span', { text: sub })),
+    el('span', { class: 'choice-go' }, icon('chev')));
+  $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
+    el('div', { class: 'login-brand' },
+      el('span', { class: 'wordmark', text: 'Strike Details' }),
+      el('p', { text: 'Controle de serviços. Escolha como quer entrar.' })),
+    el('div', { class: 'people' },
+      choice('#/entrar/funcionario', 'user', 'Funcionário', 'Ler placas, registrar etapas e retiradas'),
+      choice('#/entrar/controle', 'shield', 'Controle', 'Acesso completo ao sistema'),
+      choice('#/entrar/cliente', 'key', 'Cliente', 'Acompanhar o serviço do seu veículo', true)),
+    el('p', { class: 'login-note', text: 'Os dados ficam salvos neste aparelho.' }))));
+}
+function renderLoginPick(tipo) {
+  if (tipo === 'cliente') { setSession({ tipo: 'cliente' }); return go('#/cliente'); }
+  if (tipo !== 'funcionario' && tipo !== 'controle') return go('#/');
+  document.body.classList.add('no-nav');
+  const lista = DB.funcionarios.filter(f => f.nivel === tipo).sort((a, b) => a.nome.localeCompare(b.nome));
+  const entrar = f => { setSession({ tipo: f.nivel, id: f.id }); go('#/inicio'); };
+  $('app').replaceChildren(el('div', { class: 'login' }, el('div', { class: 'login-box' },
+    backLink('#/', 'Voltar'),
+    el('h1', { text: tipo === 'controle' ? 'Entrar como Controle' : 'Quem é você?' }),
+    lista.length
+      ? el('div', { class: 'people' }, lista.map(f => el('button', { class: 'choice', type: 'button', onclick: () => entrar(f) },
+          el('span', { class: 'choice-ico' }, icon(tipo === 'controle' ? 'shield' : 'user')),
+          el('span', { class: 'choice-txt' }, el('b', { text: f.nome })),
+          el('span', { class: 'choice-go' }, icon('chev')))))
+      : el('p', { class: 'empty', text: 'Nenhum funcionário cadastrado. Entre como Controle e cadastre em Ajustes.' }))));
+}
+
+/* =====================================================================
+   Tela: início (galeria dos veículos em serviço)
+   ===================================================================== */
+function carCard(at) {
+  const capa = capaDe(at);
+  const v = DB.veiculos[at.placa] || {};
+  const pct = Math.round(progresso(at) * 100);
+  return el('li', {}, el('a', { class: 'car', href: `#/veiculo/${esc(at.id)}`, style: 'color:inherit;text-decoration:none' },
+    el('div', { class: 'car-photo' }, capa ? photoImg(capa, `Foto do veículo ${at.placa}`) : el('div', { class: 'ph' }, icon('car'))),
+    el('div', { class: 'car-body' },
+      el('span', { class: 'car-plate', text: fmtPlaca(at.placa) }),
+      el('span', { class: 'car-desc', text: [v.descricao, at.tipoNome].filter(Boolean).join(' · ') }),
+      el('span', { class: 'car-stage', text: at.concluido ? 'Concluído' : `Em ${at.etapas[at.etapaIndex].toLowerCase()}` }),
+      el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': 'Progresso' }, el('i', { style: `width:${pct}%` })))));
+}
+function renderHome() {
+  const all = ativos();
+  const grid = el('ul', { class: 'gallery' });
+  const empty = el('p', { class: 'empty' });
+  const draw = () => {
+    const q = S.homeQuery.trim().toLowerCase(), q2 = norm(q);
+    const items = !q ? all : all.filter(a => {
+      const v = DB.veiculos[a.placa] || {};
+      return (q2 && a.placa.includes(q2)) || [v.descricao, a.tipoNome, etapaAtual(a)].join(' ').toLowerCase().includes(q);
+    });
+    grid.replaceChildren(...items.map(carCard));
+    empty.hidden = items.length > 0;
+    empty.textContent = all.length ? 'Nada encontrado.' : 'Nenhum veículo em serviço. Toque em Ler placa para registrar a entrada de um veículo.';
+  };
+  const alertas = isCtrl() ? itensEmAlerta() : [];
+  const body = el('div', { class: 'stack' },
+    el('div', { class: 'page-head' }, el('h1', { text: 'Em serviço' }), el('span', { class: 'count', text: all.length ? `${all.length} ${all.length === 1 ? 'veículo' : 'veículos'}` : '' })),
+    alertas.length ? el('a', { class: 'alert', href: '#/estoque' },
+      el('span', {}, el('b', { text: 'Estoque: ' }), alertas.map(it => `${it.nome} (${fmtQ(saldo(it.id))} ${it.unidade})`).join(', ')),
+      icon('chev')) : null,
+    all.length > 4 ? el('div', { class: 'search' }, icon('search'),
+      el('input', { type: 'search', placeholder: 'Buscar placa, veículo ou etapa', value: S.homeQuery, 'aria-label': 'Buscar veículos', oninput: e => { S.homeQuery = e.target.value; draw(); } })) : null,
+    grid, empty);
+  shell(body, { current: 'inicio' });
+  draw();
+}
+
+/* =====================================================================
+   Tela: ler placa (câmera ao vivo, foto do aparelho ou digitando)
+   ===================================================================== */
+const canLive = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
+function renderReader() {
+  S.read = null;
+  const body = el('div', { class: 'stack', style: 'max-width:560px' },
+    el('h1', { text: 'Ler placa' }),
+    el('section', { id: 'scan', class: 'stack' },
+      el('button', { id: 'btn-cam', class: 'btn btn--primary btn--lg btn--block', type: 'button', disabled: !canLive(), onclick: openCamera }, icon('camera'), 'Abrir câmera'),
+      el('p', { class: 'hint', text: canLive() ? 'A câmera abre com uma moldura para a placa.' : 'A câmera ao vivo precisa de HTTPS ou localhost. Use uma foto do aparelho ou digite.' }),
+      el('button', { class: 'btn btn--block', type: 'button', onclick: () => pickPlatePhoto() }, 'Usar foto do aparelho'),
+      el('div', { class: 'or', text: 'ou digite' }),
+      el('div', { class: 'row' },
+        el('input', { id: 'in-manual', class: 'plate-input', type: 'text', maxlength: '8', placeholder: 'ABC1D23', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'go',
+          onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); manualGo(); } } }),
+        el('button', { class: 'btn', type: 'button', style: 'flex:none', onclick: manualGo }, 'Continuar'))),
+    el('section', { id: 'viewer-live', class: 'stack', hidden: true },
+      el('div', { class: 'frame', id: 'frame' },
+        el('video', { id: 'video', playsinline: true, muted: true, autoplay: true }),
+        el('div', { class: 'guide', 'aria-hidden': 'true' })),
+      el('p', { class: 'hint', text: 'Encaixe a placa dentro da moldura, de frente e o mais perto que der.' }),
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn btn--primary grow', type: 'button', onclick: onShot }, 'Capturar placa'),
+        el('button', { class: 'btn', type: 'button', onclick: () => { stopCamera(); $('scan').hidden = false; } }, 'Cancelar'))),
+    el('section', { id: 'result', class: 'card', hidden: true }));
+  shell(body, { current: 'placa' });
+}
+function manualGo() {
+  const p = norm($('in-manual').value);
+  if (!isValid(p)) { toast('Placa inválida. São 7 caracteres, como ABC1D23 ou ABC1234.', true); $('in-manual').focus(); return; }
+  continuarComPlaca(p, null);
+}
+function continuarComPlaca(p, blob) {
+  const at = ativoDaPlaca(p);
+  if (at) return go(`#/veiculo/${esc(at.id)}`);
+  S.pending = { placa: p, blob };
+  go(`#/novo/${esc(p)}`);
+}
+function stopCamera() {
+  if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; }
+  const v = $('video'); if (v) v.srcObject = null;
+  const live = $('viewer-live'); if (live) live.hidden = true;
+}
+function syncFrameRatio() {
+  const v = $('video');
+  if (v && v.videoWidth && v.videoHeight) $('frame').style.aspectRatio = `${v.videoWidth} / ${v.videoHeight}`;
+}
+async function openCamera() {
+  if (!canLive()) return;
+  stopCamera();
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) {
+    toast(e && e.name === 'NotAllowedError' ? 'Permita o acesso à câmera nas configurações do navegador.' : 'Não consegui abrir a câmera. Use uma foto do aparelho.', true);
     return;
   }
-  box.replaceChildren(...ativos.map(at => atendimentoCard(at, { withAdvance: true })));
+  const v = $('video'); if (!v) { stopCamera(); return; }
+  v.onloadedmetadata = syncFrameRatio; v.onresize = syncFrameRatio;
+  v.srcObject = S.stream;
+  try { await v.play(); } catch {}
+  syncFrameRatio();
+  $('scan').hidden = true; $('result').hidden = true; $('viewer-live').hidden = false;
+  getWorker().catch(() => {});
 }
-
-function startCard(placa) {
-  if (!DB.tipos.length) {
-    return el('div', { class: 'card' },
-      el('p', { class: 'hint', text: 'Nenhum tipo de serviço cadastrado ainda. Peça pro Controle criar um tipo de serviço primeiro.' }));
-  }
-  const sel = el('select', { id: 'new-at-tipo' }, ...DB.tipos.map(t => el('option', { value: t.id }, t.nome)));
-  const btn = el('button', { class: 'btn btn--primary', type: 'button' }, 'Iniciar atendimento');
-  btn.addEventListener('click', () => {
-    const tipo = DB.tipos.find(t => t.id === sel.value);
-    if (!tipo) return;
-    const at = { id: uid(), placa, tipoServicoId: tipo.id, etapaIndex: 0, concluido: false, valor: null, pago: false, criadoEm: Date.now(), historico: [] };
-    DB.atendimentos.push(at);
-    if (!persist()) { DB.atendimentos.pop(); flash('scan-msg', 'Não deu para salvar. Tente de novo.', true); return; }
-    flash('scan-msg', 'Atendimento iniciado.');
-    renderScanResult();
-  });
-  return el('div', { class: 'card' },
-    el('p', { class: 'hint', text: `Placa ${placa} sem atendimento em andamento.` }),
-    el('div', { class: 'field' }, el('label', { for: 'new-at-tipo', text: 'Tipo de serviço' }), sel),
-    btn);
+function captureCrop() {
+  const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw || !vh) return null;
+  const gw = vw * 0.84, gh = gw / 3.2, m = gw * 0.06;
+  const sx = Math.max(0, vw * 0.08 - m), sy = Math.max(0, (vh - gh) / 2 - m);
+  const sw = Math.min(vw - sx, gw + 2 * m), sh = Math.min(vh - sy, gh + 2 * m);
+  const cv = document.createElement('canvas'); cv.width = Math.round(sw); cv.height = Math.round(sh);
+  cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  return cv;
 }
-
-function stepsEl(at) {
-  const t = tipoOf(at);
-  if (!t) return el('p', { class: 'hint', text: 'Tipo de serviço não encontrado.' });
-  return el('div', { class: 'steps' }, ...t.etapas.map((nome, i) => {
-    const done = at.concluido || i < at.etapaIndex;
-    const current = !at.concluido && i === at.etapaIndex;
-    return el('span', { class: 'step' + (done ? ' is-done' : '') + (current ? ' is-current' : '') },
-      el('span', { class: 'dot' }), nome);
-  }));
+function captureFrame() {
+  const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw || !vh) return null;
+  const sc = Math.min(1, 1280 / Math.max(vw, vh));
+  const cv = document.createElement('canvas'); cv.width = Math.round(vw * sc); cv.height = Math.round(vh * sc);
+  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  return cv;
 }
-
-function atendimentoCard(at, { withAdvance = false, withControls = false } = {}) {
-  const t = tipoOf(at);
-  const card = el('div', { class: 'card' });
-  card.append(
-    el('div', { class: 'at-head' },
-      el('span', { class: 'at-plate', text: at.placa }),
-      el('span', { class: 'at-badge' + (at.concluido ? ' is-done' : ''), text: etapaAtual(at) })),
-    el('p', { class: 'at-service', text: (t ? t.nome : 'Serviço removido') + ' · iniciado ' + ago(at.criadoEm) }),
-    stepsEl(at));
-
-  if (withAdvance && !at.concluido) {
-    const funcionario = currentFuncionarioForRole();
-    const btn = el('button', { class: 'btn btn--primary', type: 'button' },
-      `Concluir etapa: ${etapaAtual(at)}`);
-    btn.addEventListener('click', () => {
-      avancarEtapa(at, funcionario);
-      if (!persist()) { flash('scan-msg', 'Não deu para salvar a etapa.', true); return; }
-      flash('scan-msg', at.concluido ? 'Atendimento concluído.' : 'Etapa registrada.');
-      renderScanResult();
-    });
-    card.append(el('div', { class: 'actions' }, btn));
-  }
-
-  if (withControls) {
-    const t2 = tipoOf(at);
-    if (t2) {
-      const sel = el('select', {}, ...t2.etapas.map((n, i) => el('option', { value: i, selected: !at.concluido && i === at.etapaIndex }, n)),
-        el('option', { value: t2.etapas.length, selected: at.concluido }, 'Concluído'));
-      sel.addEventListener('change', () => {
-        definirEtapa(at, Number(sel.value), null);
-        persist();
-        renderPanel();
-      });
-      card.append(el('div', { class: 'field' }, el('label', { text: 'Ajustar etapa (Controle)' }), sel));
+function onShot() {
+  const frame = captureFrame(), crop = captureCrop();
+  if (!frame || !crop) return;
+  stopCamera();
+  runRead(frame, crop, 'crop');
+}
+async function pickPlatePhoto() {
+  const inp = $('file-plate'); inp.value = '';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f);
+    try {
+      const img = new Image(); img.src = url; await img.decode();
+      const sc = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.naturalWidth * sc)); cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      runRead(cv, cv, 'full');
+    } catch { toast('Não consegui abrir essa foto. Tente outra.', true); }
+    finally { URL.revokeObjectURL(url); }
+  };
+  inp.click();
+}
+function plateEl(raw, { reading = false } = {}) {
+  const p = norm(raw);
+  let kind = 'ghost', text = 'ABC1D23';
+  if (RE_OLD.test(p)) { kind = 'old'; text = fmtPlaca(p); }
+  else if (RE_NEW.test(p)) { kind = 'new'; text = p; }
+  else if (p) { kind = 'partial'; text = p; }
+  return el('div', { class: `plate plate--${kind}${reading ? ' is-reading' : ''}`, role: 'img', 'aria-label': p ? `Placa ${p}` : 'Placa ainda não lida' },
+    el('div', { class: 'plate__body' }, el('div', { class: 'plate__band' }, el('span', { text: 'BRASIL' })), el('div', { class: 'plate__chars', text })));
+}
+function renderResult() {
+  const box = $('result'); if (!box) return;
+  const r = S.read; box.hidden = !r; if (!r) return;
+  const p = r.plate || '';
+  const valid = isValid(p);
+  const at = valid ? ativoDaPlaca(p) : null;
+  const known = valid ? atendimentosDaPlaca(p).length : 0;
+  const input = el('input', { class: 'plate-input', type: 'text', maxlength: '8', value: p, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', 'aria-label': 'Placa lida',
+    oninput: e => { r.plate = norm(e.target.value); const c = e.target.selectionStart; renderResult(); const n = $('result').querySelector('input'); n.focus(); try { n.setSelectionRange(c, c); } catch {} } });
+  const alts = (r.alts || []).filter(a => a !== p);
+  box.replaceChildren(
+    el('p', { class: 'status', text: r.status }),
+    el('div', { class: 'plate-center' }, plateEl(p, { reading: r.reading })),
+    r.reading ? null : el('div', { class: 'field' }, el('label', { text: 'Confira a placa' }), input),
+    alts.length && !r.reading ? el('div', { class: 'field' }, el('span', { class: 'label', text: 'Outras leituras possíveis' }),
+      el('div', { class: 'chips' }, alts.map(a => el('button', { class: 'chip', type: 'button', onclick: () => { r.plate = a; renderResult(); } }, fmtPlaca(a))))) : null,
+    r.reading ? null : el('p', { class: 'hint', text: !valid ? 'A placa tem 7 caracteres: 3 letras, 1 número, 1 letra ou número e 2 números.' : at ? `Veículo em serviço: ${etapaAtual(at)}.` : known ? 'Veículo já atendido antes. Vai abrir um novo serviço.' : 'Primeira vez deste veículo.' }),
+    r.reading ? null : el('div', { class: 'actions' },
+      el('button', { class: 'btn btn--primary grow', type: 'button', disabled: !valid, onclick: () => continuarComPlaca(p, r.blob) }, at ? 'Abrir veículo' : 'Continuar'),
+      el('button', { class: 'btn', type: 'button', onclick: () => { S.read = null; renderResult(); $('scan').hidden = false; } }, 'Ler outra')));
+}
+function readError(e) {
+  if (e && e.code === 'unauthorized') return 'Código de acesso inválido. Tente de novo e informe o código certo.';
+  if (e && e.code === 'lib') return 'Não consegui carregar o leitor. Digite a placa.';
+  return 'Não deu para ler agora. Tente de novo ou digite a placa.';
+}
+async function runRead(frame, crop, mode) {
+  const r = S.read = { plate: '', alts: [], reading: true, status: 'Lendo a placa…', blob: null };
+  $('scan').hidden = true; renderResult();
+  canvasBlob(frame).then(b => { r.blob = b; }).catch(() => {});
+  S.onOcr = m => { if (S.read === r && r.reading && m && /loading/i.test(m.status || '')) { r.status = 'Baixando o leitor do aparelho, só na primeira vez…'; renderResult(); } };
+  try {
+    const out = await readPlate(frame, crop, mode);
+    if (S.read !== r) return;
+    r.reading = false;
+    const local = out.engine === 'local' ? ` ${out.note} Usei a leitura do aparelho, que é menos precisa.` : '';
+    if (out.plate) {
+      r.plate = out.plate; r.alts = [out.plate, ...(out.alts || [])];
+      r.status = (out.confidence === 'baixa' ? 'Leitura incerta. Confira cada caractere.' : 'Placa lida. Confira antes de continuar.') + local;
+    } else {
+      r.alts = out.alts || [];
+      r.status = 'Não encontrei uma placa legível. Aproxime, evite reflexo ou digite a placa.' + local;
     }
-    if (at.historico.length) {
-      card.append(el('ul', { class: 'hist' }, ...at.historico.slice().reverse().map(h =>
-        el('li', {}, el('span', { text: h.ajuste ? h.etapa : `${h.etapa} concluída` }), el('span', { text: `${h.funcionarioNome} · ${ago(h.timestamp)}` })))));
-    }
+  } catch (e) {
+    if (S.read !== r) return;
+    r.reading = false; r.status = readError(e);
+  } finally { S.onOcr = null; }
+  renderResult();
+}
+
+/* =====================================================================
+   Fotos: grade com espaços por lado do veículo
+   ===================================================================== */
+// items: [{id?, rotulo, url?}] ; onAdd(rotulo) ; onRemove(item) ; openable
+function photoGrid({ items, slots = [], onAdd, onRemove, extraLabel = 'Adicionar foto' }) {
+  const ul = el('ul', { class: 'photos' });
+  const tiles = [];
+  for (const f of items) {
+    const img = f.url ? el('img', { src: f.url, alt: f.rotulo }) : photoImg(f.id, f.rotulo);
+    tiles.push(el('li', { class: 'photo' }, img,
+      el('button', { class: 'open', type: 'button', 'aria-label': `Ver foto: ${f.rotulo}`, onclick: () => openViewer(f) }),
+      el('span', { class: 'cap', text: f.rotulo }),
+      onRemove ? el('button', { class: 'rm', type: 'button', 'aria-label': `Remover foto ${f.rotulo}`, onclick: () => onRemove(f) }, '×') : null));
   }
-  return card;
+  const tem = new Set(items.map(f => f.rotulo));
+  for (const r of slots) if (!tem.has(r) && onAdd) tiles.push(el('li', {}, el('button', { class: 'slot', type: 'button', onclick: () => onAdd(r) }, icon('camera'), r)));
+  if (onAdd) {
+    const sel = el('select', { 'aria-label': 'Tipo da foto', style: 'font-size:12px;padding:6px 26px 6px 8px;background-position:calc(100% - 13px) center,calc(100% - 8px) center' },
+      [...ROTULOS_EXTRA, ...ROTULOS].map(r => el('option', { value: r }, r)));
+    tiles.push(el('li', {}, el('div', { class: 'slot is-extra' },
+      el('button', { type: 'button', style: 'border:0;background:none;display:grid;gap:4px;justify-items:center;font-weight:600;font-size:12px;padding:0', onclick: () => onAdd(sel.value) }, icon('plus'), extraLabel),
+      sel)));
+  }
+  ul.replaceChildren(...tiles);
+  return ul;
 }
-
-function currentFuncionarioForRole() {
-  // Provisório: sem login, então usamos o primeiro funcionário do nível certo como "quem está batendo o ponto".
-  return DB.funcionarios.find(f => f.nivel === S.role) || null;
+async function openViewer(f) {
+  const url = f.url || await fotoUrl(f.id);
+  if (!url) return;
+  $('viewer-img').src = url; $('viewer-img').alt = f.rotulo; $('viewer-cap').textContent = f.rotulo;
+  const d = $('viewer'); if (d.showModal) d.showModal(); else d.setAttribute('open', '');
 }
+$('viewer-close').addEventListener('click', () => { const d = $('viewer'); if (d.close) d.close(); else d.removeAttribute('open'); });
+$('viewer').addEventListener('click', e => { if (e.target.classList.contains('viewer-img')) $('viewer-close').click(); });
 
-$('btn-find').addEventListener('click', () => {
-  const p = norm($('scan-plate').value);
-  if (!isValid(p)) { flash('scan-msg', 'Placa inválida. Confira os 7 caracteres.', true); return; }
-  S.found = p; renderScanResult();
-});
-$('scan-plate').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btn-find').click(); } });
+/* =====================================================================
+   Tela: novo atendimento (entrada do veículo)
+   ===================================================================== */
+function renderNew(placaRaw) {
+  const placa = norm(placaRaw);
+  if (!isValid(placa)) return go('#/placa');
+  const existente = ativoDaPlaca(placa);
+  if (existente) return go(`#/veiculo/${esc(existente.id)}`);
+  const v = DB.veiculos[placa] || {};
+  const anteriores = atendimentosDaPlaca(placa);
+  const fotos = []; // {rotulo, blob, url}
+  if (S.pending && S.pending.placa === placa && S.pending.blob) {
+    fotos.push({ rotulo: 'Placa', blob: S.pending.blob, url: URL.createObjectURL(S.pending.blob) });
+  }
+  S.pending = null;
 
-/* ---------- Painel (Controle) ---------- */
-let panelQuery = '';
-function renderPanel() {
-  const all = DB.atendimentos.filter(a => !a.concluido).sort((a, b) => b.criadoEm - a.criadoEm);
-  $('panel-count').textContent = all.length ? `${all.length} em andamento` : '';
-  const q = panelQuery.trim().toLowerCase();
-  const items = !q ? all : all.filter(a => {
-    const t = tipoOf(a);
-    return [a.placa, t && t.nome].filter(Boolean).join(' ').toLowerCase().includes(q);
-  });
-  $('panel-list').replaceChildren(...items.map(at => el('li', {}, atendimentoCard(at, { withControls: true }))));
-  const empty = $('panel-empty');
-  if (!all.length) { empty.hidden = false; empty.textContent = 'Nenhum veículo em serviço no momento.'; }
-  else if (!items.length) { empty.hidden = false; empty.textContent = 'Nada encontrado.'; }
-  else empty.hidden = true;
-}
-$('panel-q').addEventListener('input', e => { panelQuery = e.target.value; renderPanel(); });
-
-/* ---------- Tipos de serviço ---------- */
-function renderTypes() {
-  $('types-list').replaceChildren(...DB.tipos.map(typeCard));
-}
-function typeCard(tipo) {
-  const list = el('ul', { class: 'stage-list' }, ...tipo.etapas.map((nome, i) => {
-    const rm = el('button', { type: 'button', 'aria-label': `Remover ${nome}` }, '×');
-    rm.addEventListener('click', () => {
-      tipo.etapas.splice(i, 1); persist(); renderTypes();
-    });
-    return el('li', {}, el('span', { class: 'stage-num', text: String(i + 1) }), el('span', { text: nome }), rm);
+  const fDesc = el('input', { id: 'f-desc', type: 'text', maxlength: '80', placeholder: 'Ex.: Strada branca 2022', value: v.descricao || '' });
+  const tiposOk = DB.tipos.filter(t => t.etapas.length);
+  const fTipo = el('select', { id: 'f-tipo' }, tiposOk.map(t => el('option', { value: t.id }, t.nome)));
+  const fDanos = el('textarea', { id: 'f-danos', rows: '3', maxlength: '1000', placeholder: 'Riscos, amassados, peças soltas, problemas já existentes' });
+  const fObj = el('textarea', { id: 'f-obj', rows: '2', maxlength: '600', placeholder: 'Objetos deixados no veículo' });
+  const fValor = el('input', { id: 'f-valor', type: 'text', inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off' });
+  const fotosBox = el('div');
+  const drawFotos = () => fotosBox.replaceChildren(photoGrid({
+    items: fotos, slots: ROTULOS,
+    onAdd: async rotulo => {
+      const file = await pickPhoto(); if (!file) return;
+      try {
+        const blob = await compress(file);
+        const i = ROTULOS.includes(rotulo) ? fotos.findIndex(f => f.rotulo === rotulo) : -1;
+        const item = { rotulo, blob, url: URL.createObjectURL(blob) };
+        if (i >= 0) { URL.revokeObjectURL(fotos[i].url); fotos[i] = item; } else fotos.push(item);
+        drawFotos();
+      } catch { toast('Não consegui abrir essa foto.', true); }
+    },
+    onRemove: f => { URL.revokeObjectURL(f.url); fotos.splice(fotos.indexOf(f), 1); drawFotos(); },
   }));
-  const input = el('input', { type: 'text', placeholder: 'Nova etapa', maxlength: '60' });
-  const add = el('button', { class: 'btn btn--sm', type: 'button' }, 'Adicionar etapa');
-  add.addEventListener('click', () => {
-    const v = input.value.trim(); if (!v) return;
-    tipo.etapas.push(v); input.value = ''; persist(); renderTypes();
-  });
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add.click(); } });
-  const del = el('button', { class: 'btn btn--sm btn--danger', type: 'button' }, 'Excluir tipo');
-  del.addEventListener('click', () => {
-    const emUso = DB.atendimentos.some(a => a.tipoServicoId === tipo.id);
-    if (emUso) { flash('types-msg', 'Esse tipo tem atendimentos vinculados, não dá para excluir.', true); return; }
-    DB.tipos = DB.tipos.filter(t => t.id !== tipo.id); persist(); renderTypes();
-  });
-  return el('div', { class: 'card' },
-    el('div', { class: 'card-head' }, el('h3', { text: tipo.nome }), del),
-    list,
-    el('div', { class: 'stage-editor' }, input, add));
-}
-$('btn-add-type').addEventListener('click', () => {
-  const nome = $('new-type-name').value.trim();
-  if (!nome) { flash('types-msg', 'Digite um nome.', true); return; }
-  DB.tipos.push({ id: uid(), nome, etapas: [] });
-  if (!persist()) { DB.tipos.pop(); flash('types-msg', 'Não deu para salvar.', true); return; }
-  $('new-type-name').value = ''; flash('types-msg', 'Tipo de serviço criado. Agora adicione as etapas.'); renderTypes();
-});
+  drawFotos();
 
-/* ---------- Funcionários ---------- */
-function renderTeam() {
-  $('team-list').replaceChildren(...DB.funcionarios.map(f => {
-    const del = el('button', { class: 'btn btn--sm btn--danger', type: 'button' }, 'Remover');
-    del.addEventListener('click', () => {
-      DB.funcionarios = DB.funcionarios.filter(x => x.id !== f.id); persist(); renderTeam();
+  const salvar = el('button', { class: 'btn btn--primary btn--lg btn--block', type: 'button' }, 'Iniciar serviço');
+  salvar.addEventListener('click', async () => {
+    const tipo = tipoById(fTipo.value);
+    if (!tipo) { toast('Cadastre um tipo de serviço com etapas em Ajustes.', true); return; }
+    let valor = null;
+    if (isCtrl() && fValor.value.trim()) { valor = parseNum(fValor.value); if (isNaN(valor)) { toast('Valor inválido.', true); return; } }
+    salvar.disabled = true; salvar.textContent = 'Salvando…';
+    const fotosMeta = [];
+    try {
+      for (const f of fotos) { const id = uid(); await fotoPut(id, f.blob); fotosMeta.push({ id, rotulo: f.rotulo, em: Date.now() }); }
+    } catch {
+      for (const f of fotosMeta) fotoDel(f.id);
+      salvar.disabled = false; salvar.textContent = 'Iniciar serviço';
+      toast('Não foi possível salvar as fotos neste aparelho.', true); return;
+    }
+    const u = me();
+    const at = {
+      id: uid(), placa, tipoId: tipo.id, tipoNome: tipo.nome, etapas: [...tipo.etapas], etapaIndex: 0, feitas: {},
+      concluido: false, concluidoEm: null, criadoEm: Date.now(), criadoPorNome: u.nome,
+      danos: fDanos.value.trim(), objetos: fObj.value.trim(), valor, fotos: fotosMeta, historico: [],
+    };
+    registrar(at, 'Entrada do veículo');
+    const ok = commit(() => {
+      DB.veiculos[placa] = { ...(DB.veiculos[placa] || { criadoEm: Date.now() }), placa, descricao: fDesc.value.trim() };
+      DB.atendimentos.push(at);
     });
-    return el('li', { class: 'emp-row' },
-      el('span', {}, el('span', { class: 'emp-name', text: f.nome }), el('br'), el('span', { class: 'emp-level', text: f.nivel === 'controle' ? 'Controle' : 'Funcionário' })),
-      del);
+    for (const f of fotos) URL.revokeObjectURL(f.url);
+    if (!ok) { for (const f of fotosMeta) fotoDel(f.id); salvar.disabled = false; salvar.textContent = 'Iniciar serviço'; return; }
+    toast('Serviço iniciado.');
+    go(`#/veiculo/${esc(at.id)}`);
+  });
+
+  const body = el('div', { class: 'stack', style: 'max-width:640px' },
+    backLink('#/placa', 'Ler outra placa'),
+    el('div', { class: 'veh-head' },
+      el('span', { class: 'veh-plate', text: fmtPlaca(placa) }),
+      el('span', { class: 'veh-sub', text: anteriores.length ? `Veículo já atendido ${anteriores.length} ${anteriores.length === 1 ? 'vez' : 'vezes'}. Último serviço em ${fmtData(anteriores[0].criadoEm)}.` : 'Novo veículo. Registre a entrada.' })),
+    el('div', { class: 'card' },
+      el('h2', { text: 'Serviço' }),
+      el('div', { class: 'field' }, el('label', { for: 'f-tipo', text: 'Tipo de serviço' }),
+        tiposOk.length ? fTipo : el('p', { class: 'hint', text: 'Nenhum tipo de serviço com etapas. O Controle cadastra em Ajustes.' })),
+      el('div', { class: 'field' }, el('label', { for: 'f-desc', text: 'Veículo' }), fDesc),
+      isCtrl() ? el('div', { class: 'field' }, el('label', { for: 'f-valor', text: 'Valor do serviço (R$)' }), fValor) : null),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-head' }, el('h2', { text: 'Fotos de entrada' }), el('span', { class: 'hint', text: 'Toque para fotografar' })),
+      fotosBox),
+    el('div', { class: 'card' },
+      el('h2', { text: 'Estado na entrada' }),
+      el('div', { class: 'field' }, el('label', { for: 'f-danos', text: 'Danos ou problemas' }), fDanos),
+      el('div', { class: 'field' }, el('label', { for: 'f-obj', text: 'Objetos pessoais no veículo' }), fObj)),
+    salvar);
+  shell(body, { current: 'placa' });
+}
+
+/* =====================================================================
+   Tela: veículo em serviço (etapas, fotos, histórico)
+   ===================================================================== */
+function renderVehicle(id) {
+  const at = DB.atendimentos.find(a => a.id === id);
+  if (!at) { toast('Atendimento não encontrado.', true); return go('#/inicio'); }
+  const v = DB.veiculos[at.placa] || {};
+  const ctrl = isCtrl();
+  const redraw = () => renderVehicle(id);
+
+  const steps = el('ol', { class: 'steps' }, at.etapas.map((nome, i) => {
+    const done = at.concluido || i < at.etapaIndex, cur = !at.concluido && i === at.etapaIndex;
+    return el('li', { class: 'step ' + (done ? 'is-done' : cur ? 'is-current' : 'is-todo') },
+      el('span', { class: 'step-dot' }, done ? icon('check') : null),
+      el('span', { class: 'step-name', text: nome }),
+      el('span', { class: 'step-when', text: at.feitas[i] ? fmtDataHora(at.feitas[i]) : cur ? 'Agora' : '' }));
   }));
-}
-$('btn-add-emp').addEventListener('click', () => {
-  const nome = $('new-emp-name').value.trim(), nivel = $('new-emp-level').value;
-  if (!nome) { flash('team-msg', 'Digite um nome.', true); return; }
-  DB.funcionarios.push({ id: uid(), nome, nivel });
-  if (!persist()) { DB.funcionarios.pop(); flash('team-msg', 'Não deu para salvar.', true); return; }
-  $('new-emp-name').value = ''; flash('team-msg', 'Funcionário adicionado.'); renderTeam();
-});
 
-/* ---------- Estoque ----------
-   O saldo nunca é digitado direto: é a soma dos movimentos (entrada soma, saída subtrai,
-   contagem grava a diferença). Assim todo número tem um histórico que explica ele. */
-const fmtQ = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-const TIPO_MOV = { entrada: 'Entrada', saida: 'Saída', ajuste: 'Contagem' };
-function saldo(itemId) {
-  const s = DB.estoque.movimentos.filter(m => m.itemId === itemId).reduce((s, m) => s + m.delta, 0);
-  return Math.round(s * 100) / 100;
-}
-function isLow(item) { return item.minimo > 0 && saldo(item.id) <= item.minimo; }
+  const concluirBtn = at.concluido ? null : el('button', { class: 'btn btn--primary btn--lg btn--block', type: 'button', onclick: () => {
+    const nome = at.etapas[at.etapaIndex];
+    if (commit(() => concluirEtapa(at))) { toast(at.concluido ? 'Serviço concluído.' : `${nome} concluída.`); redraw(); }
+  } }, icon('check'), `Concluir: ${at.etapas[at.etapaIndex]}`);
 
+  const fotosBox = el('div');
+  fotosBox.append(photoGrid({
+    items: at.fotos, slots: at.concluido ? [] : ROTULOS,
+    onAdd: at.concluido && !ctrl ? null : async rotulo => {
+      const file = await pickPhoto(); if (!file) return;
+      try {
+        const blob = await compress(file); const fid = uid();
+        await fotoPut(fid, blob);
+        if (!commit(() => { at.fotos.push({ id: fid, rotulo, em: Date.now() }); registrar(at, `Foto adicionada: ${rotulo}`); })) { fotoDel(fid); return; }
+        redraw();
+      } catch { toast('Não foi possível salvar a foto.', true); }
+    },
+    onRemove: ctrl ? f => {
+      if (!window.confirm(`Remover a foto "${f.rotulo}"?`)) return;
+      if (commit(() => { at.fotos = at.fotos.filter(x => x.id !== f.id); registrar(at, `Foto removida: ${f.rotulo}`); })) { fotoDel(f.id); redraw(); }
+    } : null,
+  }));
+
+  const entrada = el('dl', { class: 'kv' },
+    el('div', {}, el('dt', { text: 'Danos ou problemas' }), el('dd', { text: at.danos || 'Nada registrado.' })),
+    el('div', {}, el('dt', { text: 'Objetos pessoais' }), el('dd', { text: at.objetos || 'Nada registrado.' })));
+
+  let ctrlCard = null;
+  if (ctrl) {
+    const sel = el('select', { 'aria-label': 'Ajustar etapa' },
+      at.etapas.map((n, i) => el('option', { value: i, selected: !at.concluido && i === at.etapaIndex }, n)),
+      el('option', { value: at.etapas.length, selected: at.concluido }, 'Concluído'));
+    sel.addEventListener('change', () => { if (commit(() => ajustarEtapa(at, Number(sel.value)))) { toast('Etapa ajustada.'); redraw(); } });
+    const fValor = el('input', { type: 'text', inputmode: 'decimal', placeholder: '0,00', value: at.valor != null ? String(at.valor).replace('.', ',') : '', autocomplete: 'off', 'aria-label': 'Valor do serviço' });
+    const salvarValor = el('button', { class: 'btn', type: 'button', style: 'flex:none', onclick: () => {
+      const raw = fValor.value.trim(); const n = raw ? parseNum(raw) : null;
+      if (raw && isNaN(n)) { toast('Valor inválido.', true); return; }
+      if (commit(() => { at.valor = n; registrar(at, n == null ? 'Valor removido' : `Valor definido: ${fmtBRL(n)}`); })) toast('Valor salvo.');
+    } }, 'Salvar');
+    const excluir = el('button', { class: 'btn btn--danger', type: 'button', onclick: () => {
+      if (!window.confirm(`Excluir o atendimento da placa ${fmtPlaca(at.placa)}? As fotos também serão apagadas.`)) return;
+      if (commit(() => { DB.atendimentos = DB.atendimentos.filter(a => a.id !== at.id); })) { at.fotos.forEach(f => fotoDel(f.id)); toast('Atendimento excluído.'); go('#/inicio'); }
+    } }, 'Excluir atendimento');
+    ctrlCard = el('div', { class: 'card' },
+      el('h2', { text: 'Controle' }),
+      el('div', { class: 'field' }, el('span', { class: 'label', text: 'Ajustar etapa' }), sel),
+      el('div', { class: 'field' }, el('span', { class: 'label', text: 'Valor do serviço (R$)' }), el('div', { class: 'row' }, fValor, salvarValor)),
+      el('div', { class: 'field' }, el('span', { class: 'label', text: 'Descrição do veículo' }),
+        (() => { const i = el('input', { type: 'text', maxlength: '80', value: v.descricao || '' });
+          i.addEventListener('change', () => commit(() => { DB.veiculos[at.placa] = { ...(DB.veiculos[at.placa] || {}), placa: at.placa, descricao: i.value.trim() }; }) && toast('Descrição salva.'));
+          return i; })()),
+      el('div', {}, excluir));
+  }
+
+  const pct = Math.round(progresso(at) * 100);
+  const body = el('div', { class: 'stack', style: 'max-width:720px' },
+    backLink(at.concluido ? '#/historico' : '#/inicio', at.concluido ? 'Histórico' : 'Em serviço'),
+    el('div', { class: 'veh-head' },
+      el('span', { class: 'veh-plate', text: fmtPlaca(at.placa) }),
+      el('span', { class: 'veh-sub', text: [v.descricao, at.tipoNome, `entrada em ${fmtDataHora(at.criadoEm)}`].filter(Boolean).join(' · ') })),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-head' }, el('h2', { text: at.concluido ? 'Serviço concluído' : `Em ${at.etapas[at.etapaIndex].toLowerCase()}` }),
+        el('span', { class: 'tag' + (at.concluido ? ' tag--ok' : ' tag--dark'), text: `${pct}%` })),
+      el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` })),
+      steps, concluirBtn),
+    el('div', { class: 'card' }, el('div', { class: 'card-head' }, el('h2', { text: 'Fotos' }), el('span', { class: 'count', text: `${at.fotos.length}` })), fotosBox),
+    el('div', { class: 'card' }, el('h2', { text: 'Estado na entrada' }), entrada),
+    ctrlCard,
+    el('div', { class: 'card' }, el('h2', { text: 'Histórico' }),
+      el('ul', { class: 'log' }, at.historico.slice().reverse().map(h => el('li', {}, el('span', { text: h.texto }), el('span', { text: [h.porNome, ago(h.em)].filter(Boolean).join(' · ') }))))));
+  shell(body, { current: at.concluido ? 'historico' : 'inicio' });
+}
+
+/* =====================================================================
+   Tela: estoque
+   Funcionário registra retirada. Controle registra entrada, contagem e mínimo.
+   ===================================================================== */
 function renderStock() {
+  const ctrl = isCtrl(), u = me();
   const itens = DB.estoque.itens;
-  const low = itens.filter(isLow);
-  $('stock-alert').textContent = low.length ? `${low.length} abaixo do mínimo` : '';
+  const cards = itens.map(it => {
+    const s = saldo(it.id), sit = situacao(it);
+    const ult = DB.estoque.movimentos.filter(m => m.itemId === it.id && m.tipo === 'saida').slice(-1)[0];
+    const open = S.stockOpen && S.stockOpen.itemId === it.id ? S.stockOpen.mode : null;
+    const toggle = mode => { S.stockOpen = open === mode ? null : { itemId: it.id, mode }; renderStock(); };
 
-  $('stock-list').replaceChildren(...itens.map(it => {
-    const s = saldo(it.id), baixo = isLow(it);
-    const semMov = !DB.estoque.movimentos.some(m => m.itemId === it.id);
-    const info = el('span', {},
-      el('span', { class: 'stock-name', text: it.nome }), baixo ? el('span', { class: 'low-tag', text: 'Repor' }) : null,
-      el('br'),
-      el('span', { class: 'stock-min', text: it.minimo > 0 ? `Mínimo: ${fmtQ(it.minimo)} ${it.unidade}` : 'Sem mínimo definido' }));
-    const minBtn = el('button', { class: 'btn btn--ghost btn--sm', type: 'button' }, 'Definir mínimo');
-    minBtn.addEventListener('click', () => {
-      const v = window.prompt(`Estoque mínimo de ${it.nome} (em ${it.unidade}):`, it.minimo || '');
-      if (v == null) return;
-      const n = Number(String(v).replace(',', '.'));
-      if (!isFinite(n) || n < 0) { flash('stock-msg', 'Mínimo inválido.', true); return; }
-      it.minimo = n; persist(); renderStock();
-    });
-    const extras = el('span', { class: 'actions' }, minBtn);
-    if (semMov) {
-      const rm = el('button', { class: 'btn btn--ghost btn--sm btn--danger', type: 'button' }, 'Remover');
-      rm.addEventListener('click', () => {
-        DB.estoque.itens = DB.estoque.itens.filter(x => x.id !== it.id); persist(); renderStock();
-      });
-      extras.append(rm);
+    let form = null;
+    if (open) {
+      const qInit = open === 'ajuste' ? fmtQ(Math.max(0, s)) : open === 'minimo' ? fmtQ(it.minimo) : '1';
+      const q = el('input', { type: 'text', inputmode: 'decimal', value: qInit, autocomplete: 'off', 'aria-label': 'Quantidade' });
+      const bump = d => { const n = parseNum(q.value); q.value = fmtQ(Math.max(0, (isNaN(n) ? 0 : n) + d)); };
+      const obs = el('input', { type: 'text', maxlength: '120', placeholder: open === 'entrada' ? 'Nota, fornecedor (opcional)' : 'Observação (opcional)' });
+      const label = { saida: 'Confirmar retirada', entrada: 'Registrar entrada', ajuste: 'Salvar contagem', minimo: 'Salvar mínimo' }[open];
+      const confirm = el('button', { class: 'btn btn--primary grow', type: 'button', onclick: () => {
+        const n = parseNum(q.value);
+        if (isNaN(n) || (open !== 'ajuste' && open !== 'minimo' && n <= 0)) { toast('Informe uma quantidade válida.', true); return; }
+        let msg = '';
+        const ok = commit(() => {
+          if (open === 'saida') { movimentar(it.id, 'saida', -n, obs.value.trim()); msg = `Retirada registrada: ${fmtQ(n)} ${it.unidade}.`; }
+          else if (open === 'entrada') { movimentar(it.id, 'entrada', n, obs.value.trim()); msg = `Entrada registrada: ${fmtQ(n)} ${it.unidade}.`; }
+          else if (open === 'ajuste') { const d = round2(n - saldo(it.id)); if (d !== 0) movimentar(it.id, 'ajuste', d, obs.value.trim() || 'Contagem'); msg = d === 0 ? 'Contagem confere com o saldo.' : 'Saldo corrigido pela contagem.'; }
+          else if (open === 'minimo') { it.minimo = n; msg = n > 0 ? `Aviso quando chegar a ${fmtQ(n)} ${it.unidade}.` : 'Mínimo removido.'; }
+        });
+        if (ok) { S.stockOpen = null; toast(msg); renderStock(); }
+      } }, label);
+      form = el('div', { class: 'inline-form' },
+        el('span', { class: 'label', text: { saida: `Quantas ${it.unidade}s você retirou?`, entrada: `Quantas ${it.unidade}s entraram?`, ajuste: `Quantas ${it.unidade}s tem agora? (contagem física)`, minimo: `Avisar quando chegar a quantas ${it.unidade}s?` }[open] }),
+        el('div', { class: 'stepper' },
+          el('button', { type: 'button', 'aria-label': 'Menos', onclick: () => bump(-1) }, '−'), q,
+          el('button', { type: 'button', 'aria-label': 'Mais', onclick: () => bump(1) }, '+')),
+        open === 'minimo' ? null : obs,
+        el('div', { class: 'actions' }, confirm, el('button', { class: 'btn', type: 'button', onclick: () => toggle(open) }, 'Cancelar')));
     }
-    return el('li', { class: 'stock-row' + (baixo ? ' is-low' : '') },
-      el('span', {}, info, extras),
-      el('span', { class: 'stock-qty' }, fmtQ(s), el('small', { text: it.unidade })));
-  }));
+    const actions = el('div', { class: 'actions' },
+      el('button', { class: 'btn grow' + (ctrl ? '' : ' btn--primary'), type: 'button', 'aria-expanded': open === 'saida', onclick: () => toggle('saida') }, 'Retirar'),
+      ctrl ? el('button', { class: 'btn grow btn--primary', type: 'button', 'aria-expanded': open === 'entrada', onclick: () => toggle('entrada') }, 'Entrada') : null);
+    const ctrlLinks = ctrl ? el('div', { class: 'actions', style: 'gap:14px' },
+      el('button', { class: 'link-btn', type: 'button', onclick: () => toggle('ajuste') }, 'Contagem'),
+      el('button', { class: 'link-btn', type: 'button', onclick: () => toggle('minimo') }, 'Estoque mínimo')) : null;
+    return el('li', { class: 'item' + (sit.k === 'low' ? ' is-low' : sit.k !== 'ok' ? ' is-out' : '') },
+      el('div', { class: 'item-top' },
+        el('div', { style: 'display:grid;gap:4px' },
+          el('span', { class: 'item-name', text: it.nome }),
+          sit.txt ? el('span', {}, el('span', { class: 'tag ' + sit.cls, text: sit.txt })) : null,
+          el('span', { class: 'item-min', text: it.minimo > 0 ? `Mínimo: ${fmtQ(it.minimo)} ${it.unidade}` : ctrl ? 'Sem mínimo definido' : '' })),
+        el('span', { class: 'item-qty' }, fmtQ(s), ' ', el('small', { text: it.unidade }))),
+      ult ? el('span', { class: 'item-last', text: `Última retirada: ${fmtQ(-ult.delta)} ${it.unidade}, ${ult.porId === (u && u.id) ? 'você' : ult.porNome}, ${ago(ult.em)}` }) : null,
+      sit.k === 'neg' && ctrl ? el('span', { class: 'item-last', style: 'color:var(--danger)', text: 'Retiraram mais do que entrou. Falta registrar uma entrada ou fazer contagem.' }) : null,
+      actions, ctrlLinks, form);
+  });
 
-  const sel = $('mov-item'), prev = sel.value;
-  sel.replaceChildren(...itens.map(it => el('option', { value: it.id }, `${it.nome} (${it.unidade})`)));
-  if (itens.some(it => it.id === prev)) sel.value = prev;
-
-  const movs = DB.estoque.movimentos.slice(-15).reverse();
-  $('mov-list').replaceChildren(...movs.map(m => {
+  const movs = DB.estoque.movimentos.filter(m => ctrl || m.porId === (u && u.id)).slice(-40).reverse();
+  const tipoTxt = { entrada: 'Entrada', saida: 'Retirada', ajuste: 'Contagem' };
+  const movList = movs.length ? el('ul', { class: 'log' }, movs.map(m => {
     const it = itens.find(x => x.id === m.itemId);
-    const sinal = m.delta > 0 ? '+' : m.delta < 0 ? '−' : '';
-    const desc = `${TIPO_MOV[m.tipo]} ${sinal}${fmtQ(Math.abs(m.delta))} ${it ? it.unidade : ''} · ${it ? it.nome : 'material removido'}` + (m.placa ? ` · ${m.placa}` : '');
-    return el('li', {}, el('span', { text: desc }), el('span', { text: `${m.por} · ${ago(m.timestamp)}` }));
+    const sinal = m.delta > 0 ? '+' : '−';
+    return el('li', {}, el('span', { text: `${tipoTxt[m.tipo]} ${sinal}${fmtQ(Math.abs(m.delta))} ${it ? it.unidade : ''} ${it ? it.nome : '(removido)'}${m.obs && m.tipo !== 'ajuste' ? ` (${m.obs})` : ''}` }),
+      el('span', { text: `${ctrl ? m.porNome + ' · ' : ''}${fmtDataHora(m.em)}` }));
+  })) : el('p', { class: 'hint', text: ctrl ? 'Nenhum movimento ainda.' : 'Você ainda não registrou retiradas.' });
+
+  let novo = null;
+  if (ctrl) {
+    const n = el('input', { type: 'text', maxlength: '60', placeholder: 'Ex.: Cola de contato' });
+    const un = el('input', { type: 'text', maxlength: '20', placeholder: 'lata, rolo, m²' });
+    novo = el('div', { class: 'card' }, el('h2', { text: 'Novo material' }),
+      el('div', { class: 'row' }, el('div', { class: 'field' }, el('span', { class: 'label', text: 'Nome' }), n), el('div', { class: 'field', style: 'flex:.6' }, el('span', { class: 'label', text: 'Unidade' }), un)),
+      el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => {
+        const nome = n.value.trim(); if (!nome) { toast('Digite o nome do material.', true); return; }
+        if (itens.some(x => x.nome.toLowerCase() === nome.toLowerCase())) { toast('Esse material já existe.', true); return; }
+        if (commit(() => DB.estoque.itens.push({ id: uid(), nome, unidade: un.value.trim() || 'un', minimo: 0 }))) { toast('Material adicionado.'); renderStock(); }
+      } }, 'Adicionar material')));
+  }
+
+  const alertas = itensEmAlerta();
+  const body = el('div', { class: 'stack-lg' },
+    el('div', { class: 'stack' },
+      el('div', { class: 'page-head' }, el('h1', { text: 'Estoque' }), alertas.length ? el('span', { class: 'tag tag--warn', text: `${alertas.length} ${alertas.length === 1 ? 'aviso' : 'avisos'}` }) : null),
+      el('p', { class: 'hint', text: ctrl ? 'Entradas e contagens são do Controle. As retiradas dos funcionários aparecem no histórico abaixo.' : 'Registre aqui cada material que você pegar.' }),
+      itens.length ? el('ul', { class: 'stock' }, cards) : el('p', { class: 'empty', text: 'Nenhum material cadastrado.' })),
+    el('div', { class: 'card' }, el('h2', { text: ctrl ? 'Movimentos' : 'Suas retiradas' }), movList),
+    novo);
+  shell(body, { current: 'estoque' });
+}
+
+/* =====================================================================
+   Tela: histórico (Controle)
+   ===================================================================== */
+function renderHistory() {
+  const all = DB.atendimentos.filter(a => a.concluido).sort((a, b) => (b.concluidoEm || 0) - (a.concluidoEm || 0));
+  const list = el('ul', { class: 'rows' });
+  const empty = el('p', { class: 'empty' });
+  const draw = () => {
+    const q = S.histQuery.trim().toLowerCase(), q2 = norm(q);
+    const items = !q ? all : all.filter(a => (q2 && a.placa.includes(q2)) || [(DB.veiculos[a.placa] || {}).descricao, a.tipoNome].join(' ').toLowerCase().includes(q));
+    list.replaceChildren(...items.map(a => {
+      const capa = capaDe(a), v = DB.veiculos[a.placa] || {};
+      return el('li', {}, el('a', { class: 'r', href: `#/veiculo/${esc(a.id)}`, style: 'color:inherit;text-decoration:none' },
+        el('span', { class: 'r-thumb' }, capa ? photoImg(capa, '') : null),
+        el('span', { class: 'r-main' }, el('span', { class: 'r-plate', text: fmtPlaca(a.placa) }), el('span', { class: 'r-sub', text: [v.descricao, a.tipoNome].filter(Boolean).join(' · ') })),
+        el('span', { class: 'r-side' }, el('div', { text: a.concluidoEm ? fmtData(a.concluidoEm) : '' }), a.valor != null ? el('div', { style: 'color:var(--ink);font-weight:600', text: fmtBRL(a.valor) }) : null)));
+    }));
+    list.hidden = !items.length; empty.hidden = !!items.length;
+    empty.textContent = all.length ? 'Nada encontrado.' : 'Nenhum serviço concluído ainda.';
+  };
+  const body = el('div', { class: 'stack', style: 'max-width:720px' },
+    el('div', { class: 'page-head' }, el('h1', { text: 'Histórico' }), el('span', { class: 'count', text: all.length ? `${all.length} concluídos` : '' })),
+    el('div', { class: 'search' }, icon('search'), el('input', { type: 'search', placeholder: 'Buscar placa ou veículo', value: S.histQuery, 'aria-label': 'Buscar no histórico', oninput: e => { S.histQuery = e.target.value; draw(); } })),
+    list, empty);
+  shell(body, { current: 'historico' });
+  draw();
+}
+
+/* =====================================================================
+   Tela: ajustes (Controle): tipos de serviço, equipe, backup
+   ===================================================================== */
+function renderSettings() {
+  const redraw = () => { const y = window.scrollY; renderSettings(); window.scrollTo(0, y); };
+  const tipos = DB.tipos.map(t => {
+    const emUso = DB.atendimentos.some(a => a.tipoId === t.id && !a.concluido);
+    const add = el('input', { type: 'text', maxlength: '60', placeholder: 'Nova etapa' });
+    const addEtapa = () => { const v = add.value.trim(); if (!v) return; if (commit(() => t.etapas.push(v))) redraw(); };
+    add.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addEtapa(); } });
+    const move = (i, d) => commit(() => { const [x] = t.etapas.splice(i, 1); t.etapas.splice(i + d, 0, x); }) && redraw();
+    return el('div', { class: 'card' },
+      el('div', { class: 'card-head' },
+        el('h3', { text: t.nome }),
+        el('button', { class: 'btn btn--sm btn--danger', type: 'button', onclick: () => {
+          if (!window.confirm(`Excluir o tipo de serviço "${t.nome}"? Atendimentos já feitos não são afetados.`)) return;
+          if (commit(() => { DB.tipos = DB.tipos.filter(x => x.id !== t.id); })) redraw();
+        } }, 'Excluir')),
+      emUso ? el('p', { class: 'hint', text: 'Mudanças nas etapas valem para os próximos serviços. Os que estão em andamento seguem a lista de quando começaram.' }) : null,
+      el('ol', { class: 'etapas' }, t.etapas.map((nome, i) => el('li', {},
+        el('span', { class: 'n', text: String(i + 1) }), el('span', { class: 't', text: nome }),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Subir ${nome}`, disabled: i === 0, onclick: () => move(i, -1) }, icon('up')),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Descer ${nome}`, disabled: i === t.etapas.length - 1, onclick: () => move(i, 1) }, icon('down')),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remover ${nome}`, onclick: () => commit(() => t.etapas.splice(i, 1)) && redraw() }, '×')))),
+      el('div', { class: 'row' }, add, el('button', { class: 'btn', type: 'button', style: 'flex:none', onclick: addEtapa }, 'Adicionar')));
+  });
+  const novoTipo = el('input', { type: 'text', maxlength: '60', placeholder: 'Ex.: Higienização interna' });
+
+  const u = me();
+  const equipe = el('ul', { class: 'rows' }, DB.funcionarios.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => {
+    const nivel = el('select', { 'aria-label': `Nível de ${f.nome}`, style: 'width:auto;font-size:14px;padding:8px 32px 8px 10px', disabled: f.id === u.id },
+      el('option', { value: 'funcionario', selected: f.nivel === 'funcionario' }, 'Funcionário'),
+      el('option', { value: 'controle', selected: f.nivel === 'controle' }, 'Controle'));
+    nivel.addEventListener('change', () => commit(() => { f.nivel = nivel.value; }) && toast('Nível alterado.'));
+    return el('li', {}, el('div', { class: 'r' },
+      el('span', { class: 'r-main' }, el('span', { class: 'r-title', text: f.nome + (f.id === u.id ? ' (você)' : '') })),
+      nivel,
+      f.id === u.id ? null : el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remover ${f.nome}`, onclick: () => {
+        if (!window.confirm(`Remover ${f.nome}? O histórico com o nome dele continua registrado.`)) return;
+        if (commit(() => { DB.funcionarios = DB.funcionarios.filter(x => x.id !== f.id); })) redraw();
+      } }, '×')));
   }));
-  $('mov-empty').hidden = movs.length > 0;
-  syncMovForm();
+  const nNome = el('input', { type: 'text', maxlength: '60', placeholder: 'Nome' });
+  const nNivel = el('select', {}, el('option', { value: 'funcionario' }, 'Funcionário'), el('option', { value: 'controle' }, 'Controle'));
+
+  const body = el('div', { class: 'stack-lg', style: 'max-width:720px' },
+    el('h1', { text: 'Ajustes' }),
+    el('section', { class: 'stack' },
+      el('h2', { text: 'Tipos de serviço e etapas' }),
+      ...tipos,
+      el('div', { class: 'card' }, el('h3', { text: 'Novo tipo de serviço' }),
+        el('div', { class: 'row' }, novoTipo, el('button', { class: 'btn btn--primary', type: 'button', style: 'flex:none', onclick: () => {
+          const nome = novoTipo.value.trim(); if (!nome) { toast('Digite o nome.', true); return; }
+          if (commit(() => DB.tipos.push({ id: uid(), nome, etapas: [] }))) { toast('Tipo criado. Agora adicione as etapas.'); redraw(); }
+        } }, 'Criar')))),
+    el('section', { class: 'stack' },
+      el('h2', { text: 'Equipe' }),
+      equipe,
+      el('div', { class: 'card' }, el('h3', { text: 'Adicionar pessoa' }),
+        el('div', { class: 'row' }, nNome, el('div', { style: 'flex:.7' }, nNivel)),
+        el('div', {}, el('button', { class: 'btn btn--primary', type: 'button', onclick: () => {
+          const nome = nNome.value.trim(); if (!nome) { toast('Digite o nome.', true); return; }
+          if (commit(() => DB.funcionarios.push({ id: uid(), nome, nivel: nNivel.value }))) { toast('Pessoa adicionada.'); redraw(); }
+        } }, 'Adicionar')))),
+    el('section', { class: 'stack' },
+      el('h2', { text: 'Dados' }),
+      el('div', { class: 'card' },
+        el('p', { class: 'hint', text: 'Tudo fica salvo neste navegador. Faça um backup de vez em quando (as fotos não entram no arquivo).' }),
+        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => {
+          const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
+          const a = el('a', { href: URL.createObjectURL(blob), download: `strike-details-backup-${new Date().toISOString().slice(0, 10)}.json` });
+          document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        } }, 'Baixar backup (JSON)')))));
+  shell(body, { current: 'ajustes' });
 }
 
-function syncMovForm() {
-  const tipo = $('mov-tipo').value;
-  $('mov-qtd-label').textContent = tipo === 'ajuste' ? 'Quantidade contada' : 'Quantidade';
-  $('mov-placa-wrap').hidden = tipo !== 'saida';
+/* =====================================================================
+   Tela: cliente (só placa, andamento e fotos)
+   ===================================================================== */
+function renderClient(placaRaw) {
+  const placa = norm(placaRaw || '');
+  const input = el('input', { class: 'plate-input', type: 'text', maxlength: '8', placeholder: 'ABC1D23', value: placa, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', enterkeyhint: 'go', 'aria-label': 'Placa do veículo' });
+  const buscar = () => {
+    const p = norm(input.value);
+    if (!isValid(p)) { toast('Placa inválida. São 7 caracteres, como ABC1D23.', true); input.focus(); return; }
+    go(`#/cliente/${esc(p)}`);
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); buscar(); } });
+
+  let result = null;
+  if (placa) {
+    const at = ativoDaPlaca(placa) || atendimentosDaPlaca(placa)[0];
+    if (!at) {
+      result = el('p', { class: 'empty', text: `Não encontramos serviço para a placa ${fmtPlaca(placa)}. Confira a placa ou fale com a Strike Details.` });
+    } else {
+      const v = DB.veiculos[at.placa] || {};
+      const pct = Math.round(progresso(at) * 100);
+      result = el('div', { class: 'stack' },
+        el('div', { class: 'veh-head' },
+          el('span', { class: 'veh-plate', text: fmtPlaca(at.placa) }),
+          el('span', { class: 'veh-sub', text: [v.descricao, at.tipoNome].filter(Boolean).join(' · ') })),
+        el('div', { class: 'status-big' },
+          el('span', { class: 'k', text: at.concluido ? 'SERVIÇO CONCLUÍDO' : 'ETAPA ATUAL' }),
+          el('span', { class: 'v', text: at.concluido ? 'Pronto' : at.etapas[at.etapaIndex] }),
+          el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` }))),
+        el('div', { class: 'card' }, el('h2', { text: 'Andamento' }),
+          el('ol', { class: 'steps' }, at.etapas.map((nome, i) => {
+            const done = at.concluido || i < at.etapaIndex, cur = !at.concluido && i === at.etapaIndex;
+            return el('li', { class: 'step ' + (done ? 'is-done' : cur ? 'is-current' : 'is-todo') },
+              el('span', { class: 'step-dot' }, done ? icon('check') : null),
+              el('span', { class: 'step-name', text: nome }),
+              el('span', { class: 'step-when', text: at.feitas[i] ? fmtData(at.feitas[i]) : cur ? 'Em andamento' : '' }));
+          }))),
+        at.fotos.length ? el('div', { class: 'card' }, el('h2', { text: 'Fotos' }), photoGrid({ items: at.fotos })) : null);
+    }
+  }
+  const body = el('div', { class: 'client stack-lg' },
+    el('div', { class: 'client-hero' }, el('h1', { text: 'Acompanhe seu veículo' }), el('p', { text: 'Digite a placa para ver o andamento do serviço e as fotos.' })),
+    el('div', { class: 'row' }, input, el('button', { class: 'btn btn--primary', type: 'button', style: 'flex:none', onclick: buscar }, 'Ver andamento')),
+    result);
+  shell(body, { nav: false });
 }
-$('mov-tipo').addEventListener('change', syncMovForm);
-
-$('btn-mov').addEventListener('click', () => {
-  const itemId = $('mov-item').value, tipo = $('mov-tipo').value;
-  const item = DB.estoque.itens.find(x => x.id === itemId);
-  if (!item) { flash('stock-msg', 'Cadastre um material primeiro.', true); return; }
-  const raw = $('mov-qtd').value.trim(), qtd = Number(raw.replace(',', '.'));
-  if (!/^\d+([.,]\d+)?$/.test(raw) || (tipo !== 'ajuste' && qtd === 0)) {
-    flash('stock-msg', 'Informe uma quantidade válida.', true); return;
-  }
-  const atual = saldo(item.id);
-  const round2 = n => Math.round(n * 100) / 100; // evita 0,1 + 0,2 = 0,30000000000000004
-  const delta = round2(tipo === 'entrada' ? qtd : tipo === 'saida' ? -qtd : qtd - atual);
-  if (tipo === 'saida' && qtd > atual) {
-    flash('stock-msg', `Saída maior que o saldo (${fmtQ(atual)} ${item.unidade}). Registre a entrada ou faça uma contagem.`, true); return;
-  }
-  if (tipo === 'ajuste' && delta === 0) { flash('stock-msg', 'Contagem confere com o saldo. Nada a corrigir.'); return; }
-  let placa = '';
-  if (tipo === 'saida' && $('mov-placa').value.trim()) {
-    placa = norm($('mov-placa').value);
-    if (!isValid(placa)) { flash('stock-msg', 'Placa inválida. Confira os 7 caracteres ou deixe em branco.', true); return; }
-  }
-  const quem = currentFuncionarioForRole();
-  DB.estoque.movimentos.push({ id: uid(), itemId, tipo, delta, placa, obs: $('mov-obs').value.trim(), por: quem ? quem.nome : 'Controle', timestamp: Date.now() });
-  if (!persist()) { DB.estoque.movimentos.pop(); flash('stock-msg', 'Não deu para salvar.', true); return; }
-  $('mov-qtd').value = ''; $('mov-placa').value = ''; $('mov-obs').value = '';
-  flash('stock-msg', `${TIPO_MOV[tipo]} registrada. Saldo: ${fmtQ(saldo(item.id))} ${item.unidade}.`);
-  renderStock();
-});
-
-$('btn-add-item').addEventListener('click', () => {
-  const nome = $('new-item-nome').value.trim(), unidade = $('new-item-unidade').value.trim() || 'un';
-  const minimo = Number(String($('new-item-min').value || '0').replace(',', '.'));
-  if (!nome) { flash('stock-msg', 'Digite o nome do material.', true); return; }
-  if (DB.estoque.itens.some(x => x.nome.toLowerCase() === nome.toLowerCase())) { flash('stock-msg', 'Esse material já existe.', true); return; }
-  DB.estoque.itens.push({ id: uid(), nome, unidade, minimo: isFinite(minimo) && minimo > 0 ? minimo : 0 });
-  if (!persist()) { DB.estoque.itens.pop(); flash('stock-msg', 'Não deu para salvar.', true); return; }
-  $('new-item-nome').value = ''; $('new-item-unidade').value = ''; $('new-item-min').value = '';
-  flash('stock-msg', 'Material adicionado.'); renderStock();
-});
 
 /* ---------- Início ---------- */
-$('role-func').addEventListener('click', () => setRole('funcionario'));
-$('role-ctrl').addEventListener('click', () => setRole('controle'));
-for (const t of TABS) $(`tab-${t}`).addEventListener('click', () => selectTab(t));
-setRole('funcionario');
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
+route();
+
+// Só para testes automatizados; não afeta o uso normal.
+window.__sd = { norm, isValid, fixByPosition, extractPlates, saldo, get DB() { return DB; } };
 })();
 </script>
 </body>
