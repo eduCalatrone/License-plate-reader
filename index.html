@@ -893,7 +893,7 @@ function sessaoTerminou() {
 /* =====================================================================
    Estado de tela e navegação
    ===================================================================== */
-const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null, ocupado: false, loginAberto: null };
+const S = { stream: null, onOcr: null, pending: null, homeQuery: '', histQuery: '', stockOpen: null, read: null, ocupado: false, loginAberto: null, abertos: {} };
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function parts() { return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent); }
 window.addEventListener('hashchange', route);
@@ -978,6 +978,26 @@ function navBar(current) {
     ? [inicio, estoque, ler, item('#/historico', 'historico', 'Histórico', 'clock'), item('#/ajustes', 'ajustes', 'Ajustes', 'gear')]
     : [inicio, ler, estoque];
   return el('nav', { class: 'nav', 'aria-label': 'Menu' }, el('div', { class: 'nav-in' }, items));
+}
+// Lista longa (histórico, movimentos): mostra as 3 mais recentes; "Mostrar mais" abre de 10 em 10.
+// Guarda quantas estão abertas em S.abertos[chave], para não fechar quando a tela se atualiza sozinha.
+const RECOLHIDO = 3, PASSO = 10;
+function listaRecolhivel(chave, itens, desenhar) {
+  const ul = el('ul', { class: 'log' });
+  const barra = el('div', { class: 'actions', style: 'gap:14px' });
+  const draw = () => {
+    const n = Math.min(itens.length, S.abertos[chave] || RECOLHIDO);
+    ul.replaceChildren(...itens.slice(0, n).map(desenhar));
+    const falta = itens.length - n;
+    barra.replaceChildren(...[
+      falta > 0 ? el('button', { class: 'link-btn', type: 'button', onclick: () => { S.abertos[chave] = n + PASSO; draw(); } },
+        `Mostrar mais (${falta})`) : null,
+      n > RECOLHIDO ? el('button', { class: 'link-btn', type: 'button', onclick: () => { delete S.abertos[chave]; draw(); } }, 'Mostrar menos') : null,
+    ].filter(Boolean));
+    barra.hidden = !barra.childElementCount;
+  };
+  draw();
+  return el('div', { class: 'stack', style: 'gap:6px' }, ul, barra);
 }
 const backLink = (href, label) => el('a', { class: 'back', href }, icon('back'), label);
 
@@ -1516,7 +1536,7 @@ function renderVehicle(id) {
     el('div', { class: 'card' }, el('h2', { text: 'Estado na entrada' }), entrada),
     ctrlCard,
     el('div', { class: 'card' }, el('h2', { text: 'Histórico' }),
-      el('ul', { class: 'log' }, at.historico.slice().reverse().map(h => el('li', {}, el('span', { text: h.texto }), el('span', { text: [h.porNome, ago(h.em)].filter(Boolean).join(' · ') }))))));
+      listaRecolhivel(`hist:${at.id}`, at.historico.slice().reverse(), h => el('li', {}, el('span', { text: h.texto }), el('span', { text: [h.porNome, ago(h.em)].filter(Boolean).join(' · ') })))));
   shell(body, { current: at.concluido ? 'historico' : 'inicio' });
 }
 
@@ -1578,14 +1598,14 @@ function renderStock() {
       actions, ctrlLinks, form);
   });
 
-  const movs = DB.estoque.movimentos.filter(m => ctrl || m.porId === (u && u.id)).slice(-40).reverse();
+  const movs = DB.estoque.movimentos.filter(m => ctrl || m.porId === (u && u.id)).slice().reverse();
   const tipoTxt = { entrada: 'Entrada', saida: 'Retirada', ajuste: 'Contagem' };
-  const movList = movs.length ? el('ul', { class: 'log' }, movs.map(m => {
+  const movList = movs.length ? listaRecolhivel('movimentos', movs, m => {
     const it = itens.find(x => x.id === m.itemId);
     const sinal = m.delta > 0 ? '+' : '−';
     return el('li', {}, el('span', { text: `${tipoTxt[m.tipo]} ${sinal}${fmtQ(Math.abs(m.delta))} ${it ? it.unidade : ''} ${it ? it.nome : '(removido)'}${m.obs && m.tipo !== 'ajuste' ? ` (${m.obs})` : ''}` }),
       el('span', { text: `${ctrl ? m.porNome + ' · ' : ''}${fmtDataHora(m.em)}` }));
-  })) : el('p', { class: 'hint', text: ctrl ? 'Nenhum movimento ainda.' : 'Você ainda não registrou retiradas.' });
+  }) : el('p', { class: 'hint', text: ctrl ? 'Nenhum movimento ainda.' : 'Você ainda não registrou retiradas.' });
 
   let novo = null;
   if (ctrl) {
