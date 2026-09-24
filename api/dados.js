@@ -102,7 +102,13 @@ async function aplicar(c, op, eu, versoes) {
   const quem = eu.nome;
   const ctrl = eu.nivel === 'controle';
   const tipoOp = `${op.col}:${op.acao}`;
-  if (!ctrl && SO_CONTROLE.has(tipoOp)) throw erro(403, 'proibido', tipoOp);
+  // Foto de etapa tirada errada: qualquer pessoa da equipe pode trocar (remove a antiga e manda outra).
+  let fotoDeEtapa = false;
+  if (!ctrl && tipoOp === 'fotos:remover') {
+    const [f] = await rest(c, `sd_fotos?select=etapa&id=eq.${q(id(op.id))}`) || [];
+    fotoDeEtapa = !!f && f.etapa != null;
+  }
+  if (!ctrl && SO_CONTROLE.has(tipoOp) && !fotoDeEtapa) throw erro(403, 'proibido', tipoOp);
   switch (tipoOp) {
     case 'funcionarios:salvar': {
       const fid = id(it.id);
