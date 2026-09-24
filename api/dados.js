@@ -20,7 +20,7 @@ async function carregar(c, eu) {
     restAll(c, 'sd_tipos_servico?select=id,nome,etapas&ativo=eq.true&order=criado_em,id'),
     restAll(c, 'sd_veiculos?select=placa,descricao,criado_em&order=placa'),
     restAll(c, 'sd_atendimentos?select=*&excluido_em=is.null&order=criado_em,id'),
-    restAll(c, 'sd_fotos?select=id,atendimento_id,rotulo,caminho,miniatura,criado_em,apagada_em&removida_em=is.null&order=criado_em,id'),
+    restAll(c, 'sd_fotos?select=id,atendimento_id,rotulo,caminho,miniatura,etapa,criado_em,apagada_em&removida_em=is.null&order=criado_em,id'),
     restAll(c, 'sd_estoque_itens?select=id,nome,unidade,minimo&ativo=eq.true&order=criado_em,id'),
     restAll(c, 'sd_estoque_movimentos?select=*&order=em,id'),
     restAll(c, 'sd_ajustes?select=chave,valor'),
@@ -29,7 +29,7 @@ async function carregar(c, eu) {
   for (const f of fotos) {
     if (f.apagada_em) { apagadasPorAt.set(f.atendimento_id, (apagadasPorAt.get(f.atendimento_id) || 0) + 1); continue; }
     if (!fotosPorAt.has(f.atendimento_id)) fotosPorAt.set(f.atendimento_id, []);
-    fotosPorAt.get(f.atendimento_id).push({ id: f.id, rotulo: f.rotulo, em: ms(f.criado_em), caminho: f.caminho, miniatura: f.miniatura || null });
+    fotosPorAt.get(f.atendimento_id).push({ id: f.id, rotulo: f.rotulo, em: ms(f.criado_em), caminho: f.caminho, miniatura: f.miniatura || null, ...(f.etapa == null ? {} : { etapa: f.etapa }) });
   }
   return {
     fotoBase: fotoBase(c),
@@ -205,6 +205,7 @@ async function aplicar(c, op, eu, versoes) {
       return inserirSeNovo(c, 'sd_fotos', {
         id: id(it.id), atendimento_id: id(it.atendimentoId, 'atendimentoId'), rotulo: txt(it.rotulo, 40) || 'Outra',
         caminho, miniatura, criado_em: quando(it.em, 'em') || agora(),
+        etapa: Number.isInteger(it.etapa) && it.etapa >= 0 && it.etapa < 1000 ? it.etapa : null,
       });
     }
     case 'fotos:remover':

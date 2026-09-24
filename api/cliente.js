@@ -3,6 +3,7 @@
 // Devolve só o que o cliente pode ver: etapa atual, andamento (datas) e fotos.
 // Nunca devolve valores, danos, objetos pessoais nem nomes da equipe.
 // Fotos marcadas como "Danos" ficam de fora (são para controle interno).
+// Fotos das etapas vêm com o número da etapa (etapa), para aparecer no andamento.
 
 const { config, send, rest, fotoBase, ms } = require('./_supabase.js');
 
@@ -22,7 +23,7 @@ module.exports = async (req, res) => {
     const at = ats && ats[0];
     if (!at) return send(res, 200, { atendimento: null });
     const [veiculo] = await rest(c, `sd_veiculos?select=descricao&placa=eq.${placa}`) || [];
-    const fotos = await rest(c, `sd_fotos?select=rotulo,caminho,miniatura&atendimento_id=eq.${encodeURIComponent(at.id)}&removida_em=is.null&apagada_em=is.null&order=criado_em,id`) || [];
+    const fotos = await rest(c, `sd_fotos?select=rotulo,caminho,miniatura,etapa&atendimento_id=eq.${encodeURIComponent(at.id)}&removida_em=is.null&apagada_em=is.null&order=criado_em,id`) || [];
     const base = fotoBase(c);
     return send(res, 200, {
       atendimento: {
@@ -35,7 +36,7 @@ module.exports = async (req, res) => {
         concluido: at.concluido,
         concluidoEm: ms(at.concluido_em),
         criadoEm: ms(at.criado_em),
-        fotos: fotos.filter(f => !FOTOS_OCULTAS.has(f.rotulo)).map(f => ({ rotulo: f.rotulo, url: base + f.caminho, mini: f.miniatura ? base + f.miniatura : null })),
+        fotos: fotos.filter(f => !FOTOS_OCULTAS.has(f.rotulo)).map(f => ({ rotulo: f.rotulo, etapa: f.etapa, url: base + f.caminho, mini: f.miniatura ? base + f.miniatura : null })),
       },
     });
   } catch (e) {
